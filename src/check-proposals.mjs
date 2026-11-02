@@ -43,9 +43,13 @@ export function proposeCheckWorkflow(
     added = [],
     notAdded = [],
     installed = new Set();
-  for (const check of report.checks.filter(
-    (check) => check.status === "missing",
-  )) {
+  const missing = report.checks.filter((check) => check.status === "missing");
+  // Scan the checkout before installing packages or running commands that create
+  // generated files. Dependency fixtures must not become repository secret findings.
+  for (const check of [
+    ...missing.filter((check) => tools[check.check]),
+    ...missing.filter((check) => !tools[check.check]),
+  ]) {
     if (check.check === "pull-request-ci") continue;
     if (tools[check.check]) {
       const tool = tools[check.check],

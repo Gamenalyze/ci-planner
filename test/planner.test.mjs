@@ -583,3 +583,54 @@ test("implicit job and step conditions retain hidden external inputs", () => {
       );
   }
 });
+
+test("hidden contexts remain fresh regardless of expression name casing", () => {
+  for (const context of ["Secrets", "SECRETS", "VaRs", "INPUTS", "GitHub"]) {
+    for (const expression of [
+      "echo $" + "{{ " + context + ".VALUE }}",
+      "echo $" + "{{ format('}}', " + context + ".VALUE) }}",
+    ]) {
+      const patched = source.replaceAll("node --version", expression);
+      assert(
+        Object.values(
+          buildPlan(
+            options({
+              enforce: true,
+              workflows: { [workflow]: patched },
+            }),
+          ).jobs,
+        ).every((job) => job.run),
+        context,
+      );
+    }
+    const patched = source.replaceAll(
+      "    runs-on:",
+      "    if: " + context + ".VALUE == 'true'\n    runs-on:",
+    );
+    assert(
+      Object.values(
+        buildPlan(
+          options({
+            enforce: true,
+            workflows: { [workflow]: patched },
+          }),
+        ).jobs,
+      ).every((job) => job.run),
+      context + " implicit condition",
+    );
+  }
+  const literal = source.replaceAll(
+    "node --version",
+    "echo $" + "{{ 'SECRETS.VALUE' }}",
+  );
+  assert(
+    Object.values(
+      buildPlan(
+        options({
+          enforce: true,
+          workflows: { [workflow]: literal },
+        }),
+      ).jobs,
+    ).every((job) => !job.run),
+  );
+});

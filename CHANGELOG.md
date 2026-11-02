@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Preserve a caller's Node.js 22+ runtime in the composite Action. Set up Node 24 only when the existing runtime is missing or unsupported, and document that fallback's PATH effect.
+- Check the matrix runtime after the shipped Action, so Node 22 audits and package smoke tests cannot silently run on Node 24.
+- Detect hidden expression contexts regardless of name casing, including implicit conditions.
+- Run generated and project CI secret scans before package installation to avoid dependency fixtures and generated output on fresh checkouts.
+
 ## 0.2.0 — 2026-11-02
 
 - Fix a skip bypass: changed producer inputs now invalidate downstream consumers, transitively. Upgrade before enabling enforcement.

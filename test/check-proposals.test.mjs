@@ -60,6 +60,27 @@ test("does not wire fake, dynamic or native build scripts as automated tests", (
     assert(!p.addedCheckIds.includes("package.json#tests"), script);
   }
 });
+
+test("repository secret scanning precedes package installation in generated checks", () => {
+  const s = snapshot();
+  const report = auditRepositorySnapshot(s);
+  // Exercise both input orders: scan placement cannot depend on report ordering.
+  for (const checks of [report.checks, [...report.checks].reverse()]) {
+    const proposal = proposeCheckWorkflow(s, { ...report, checks });
+    const steps = parseDocument(proposal.content).toJS().jobs[
+      "repository-checks"
+    ].steps;
+    const scan = steps.findIndex((step) =>
+      step.run?.startsWith("gitleaks dir"),
+    );
+    const installs = steps.flatMap((step, index) =>
+      step.run?.startsWith("npm ci") ? [index] : [],
+    );
+    assert(scan >= 0);
+    assert(installs.length > 0);
+    assert(installs.every((index) => scan < index));
+  }
+});
 test("does not add duplicate checks when blocking CI coverage already exists", () => {
   const s = snapshot();
   const p = proposeCheckWorkflow(s);

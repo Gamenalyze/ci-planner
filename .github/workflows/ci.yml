@@ -25,11 +25,6 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
-      - run: npm ci --ignore-scripts --no-audit --no-fund
-      - run: node --version
-      - run: npm run check
-      - run: npm test
-      - run: npm audit --omit=dev --audit-level=high
       - name: Install verified CI scanners
         shell: bash
         run: |
@@ -44,6 +39,11 @@ jobs:
           echo "$tools_dir" >> "$GITHUB_PATH"
       - run: actionlint .github/workflows/ci.yml examples/pull-request.yml
       - run: gitleaks dir . --redact --no-banner
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: node --version
+      - run: npm run check
+      - run: npm test
+      - run: npm audit --omit=dev --audit-level=high
       - name: Exercise the shipped Action against this repository
         uses: ./
         id: self-plan
@@ -54,10 +54,12 @@ jobs:
           enforce: "false"
       - name: Verify Action outputs and run completeness audit
         env:
+          EXPECTED_NODE: ${{ matrix.node }}
           PLANNER_READY: ${{ steps.self-plan.outputs.ready }}
           PLANNER_MODE: ${{ steps.self-plan.outputs.mode }}
           PLANNER_RUN: ${{ steps.self-plan.outputs.run }}
         run: |
+          node -e 'require("node:assert/strict").equal(process.versions.node.split(".")[0], process.env.EXPECTED_NODE);'
           node -e 'const assert = require("node:assert/strict"); assert.equal(process.env.PLANNER_READY, "true"); assert.equal(process.env.PLANNER_MODE, "shadow"); assert.equal(JSON.parse(process.env.PLANNER_RUN).validate, true);'
           node bin/ci-planner.mjs audit-repo --root . > "$RUNNER_TEMP/ci-completeness.json"
       - name: Smoke-test the distributable
