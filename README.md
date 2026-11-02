@@ -1,6 +1,6 @@
 # CI Planner
 
-Free CI audits and conservative pull request plans for GitHub Actions. Version 0.2.0.
+Free CI audits and conservative pull request plans for GitHub Actions. Version 0.2.1.
 
 CI Planner helps you see where CI time goes and decide which jobs a PR needs. It rebuilds its job graph from committed workflows on each plan. It runs locally or on your runners. No account, model API key, paid tier or hosted service is required.
 
@@ -19,7 +19,9 @@ Unknown inputs, structural changes, shared runtime/control changes, new jobs, hi
 
 ## Install
 
-Requires Node.js 22 or newer and Git. Live audits also need an installed, authenticated [GitHub CLI](https://cli.github.com/). CI tests Node.js 22 and 24; the Action sets up Node.js 24.
+For GitHub Actions, use `Gamenalyze/ci-planner@v0.2.1` with the [complete workflow example](examples/pull-request.yml). Start in shadow mode and keep the run-all fallback. For production, pin the Action to the reviewed release commit SHA. The Action runs on your runner; it needs no CI Planner account, API key or hosted service.
+
+Requires Node.js 22 or newer and Git. Live audits also need an installed, authenticated [GitHub CLI](https://cli.github.com/). CI tests Node.js 22 and 24; the Action preserves an existing Node.js 22+ runtime and installs Node.js 24 only when needed.
 
 ```sh
 git clone https://github.com/Gamenalyze/ci-planner.git

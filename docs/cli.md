@@ -1,4 +1,4 @@
-# CLI reference — 0.2.0
+# CLI reference — 0.2.1
 
 ## Setup
 

@@ -1,4 +1,4 @@
-# Repository completeness audit — 0.2.0
+# Repository completeness audit — 0.2.1
 
 CI Planner can compare a repository's contents with the checks invoked by its GitHub Actions workflows.
 

@@ -1,4 +1,4 @@
-# Input policy reference — 0.2.0
+# Input policy reference — 0.2.1
 
 Place `.ci-planner.json` in the repository being analyzed. The planner reads its committed version from the supplied trusted base. A PR cannot use its own changed policy to enable skips.
 

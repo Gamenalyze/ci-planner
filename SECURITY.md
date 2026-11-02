@@ -1,4 +1,4 @@
-# Security — 0.2.0
+# Security — 0.2.1
 
 CI Planner analyzes untrusted repository metadata. It must not turn that metadata into privileged execution or successful evidence.
 

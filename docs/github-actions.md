@@ -1,4 +1,4 @@
-# GitHub Actions integration — 0.2.0
+# GitHub Actions integration — 0.2.1
 
 Use the [complete workflow example](../examples/pull-request.yml) as a starting point. It targets Node source tests. Preserve your own runner labels, permissions, required checks and release rules.
 
