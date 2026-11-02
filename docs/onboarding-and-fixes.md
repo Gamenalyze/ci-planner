@@ -51,7 +51,7 @@ Before publishing, the command:
 1. Regenerates the proposal from committed local objects.
 2. Requires local HEAD to match the remote repository's default branch.
 3. Validates the generated YAML, unprivileged PR event and additive workflow contract.
-4. Refuses an existing generated file or deterministic fix branch.
+4. Refuses an existing generated file, tracked descendant or leaf ancestor at that path, and an existing deterministic fix branch. A directory cannot be replaced by the proposed workflow.
 5. Builds a new commit adding only .github/workflows/ci-planner-checks.yml.
 6. Checks that the default branch has not moved, creates a new branch and opens a draft PR.
 

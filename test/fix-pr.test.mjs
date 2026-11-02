@@ -212,7 +212,7 @@ test("repos with no supported gaps publish nothing, and generated files are neve
     "on: pull_request\njobs:\n  owner:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo owner checks\n",
   );
   f.commit();
-  assert.throws(() => previewFix({ root: f.root }), /already exists/);
+  assert.throws(() => previewFix({ root: f.root }), /collides/);
 });
 
 test("fix PR explanations escape display text and omit raw source commands", (t) => {
@@ -228,6 +228,34 @@ test("fix PR explanations escape display text and omit raw source commands", (t)
   assert(!body.includes("<script>"));
   assert(!body.includes("@owners"));
   assert(!body.includes("SECRET_COMMAND"));
+});
+
+test("fix publication refuses tracked directory and ancestor collisions before any API write", async (t) => {
+  localContext(t);
+  for (const name of [
+    ".github/workflows/ci-planner-checks.yml/README.md",
+    ".github",
+    ".github/workflows",
+  ]) {
+    const f = fixture(t, {
+      ...baseFiles(),
+      [name]: "Preserve this owner's content.\n",
+    });
+    let calls = 0;
+    await assert.rejects(
+      openFixPullRequest({ root: f.root, repository: "owner/repo" }, () => {
+        calls++;
+        throw Error("No API calls are permitted for a path collision");
+      }),
+      /collid|already exists/,
+    );
+    assert.equal(calls, 0);
+    assert.equal(
+      fs.readFileSync(path.join(f.root, name), "utf8"),
+      "Preserve this owner's content.\n",
+    );
+    assert.equal(f.git("status", "--porcelain"), "");
+  }
 });
 
 test("gh transport uses fixed-host argument arrays and JSON stdin, and redacts API error payloads", (t) => {

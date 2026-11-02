@@ -80,9 +80,19 @@ export function previewFix({ root = "." } = {}) {
   const snapshot = readRepositorySnapshot({ root });
   const before = auditRepositorySnapshot(snapshot);
   const proposal = proposeCheckWorkflow(snapshot, before);
-  if (Object.hasOwn(snapshot.files, proposal.path) && proposal.content)
+  // Git's tree API can replace a directory with a blob or a tracked ancestor
+  // with a new tree. Reject exact paths, descendants and leaf ancestors alike.
+  if (
+    proposal.content &&
+    Object.keys(snapshot.files).some(
+      (name) =>
+        name === proposal.path ||
+        name.startsWith(proposal.path + "/") ||
+        proposal.path.startsWith(name + "/"),
+    )
+  )
     throw Error(
-      "Generated workflow already exists; review it instead of overwriting",
+      "Generated workflow path collides with existing tracked content; review it instead of overwriting",
     );
   const after = proposal.content
     ? auditRepositorySnapshot({
