@@ -12,7 +12,7 @@ Use the [complete workflow example](../examples/pull-request.yml) as a starting 
 - Run controlled jobs when planning fails, outputs are missing, or a job is absent from the output map.
 - Start in shadow mode. Set enforce: 'true' only after the target branch has an enforce policy and the input contracts have been reviewed.
 
-The Action sets up Node.js 24 itself. The standalone CLI supports Node.js 22+. It installs the single exact parser dependency from its own lockfile with lifecycle scripts disabled. It does not install or execute the PR's dependencies.
+The Action uses the Node.js version already on PATH when it is 22 or newer. It preserves that runtime for later steps in the caller's job. If Node is missing, cannot run, or is older than 22, the Action installs Node.js 24 with setup-node; that fallback changes PATH for later steps too. Use a separate planning job or set up your build runtime after planning if you need an older version. The standalone CLI supports Node.js 22+. The Action installs the single exact parser dependency from its own lockfile with lifecycle scripts disabled. It does not install or execute the PR's dependencies.
 
 ## Inputs and outputs
 

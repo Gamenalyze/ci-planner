@@ -35,10 +35,21 @@ outputs:
 runs:
   using: composite
   steps:
+    - name: Check the caller Node runtime
+      id: runtime
+      shell: bash
+      run: |
+        if command -v node >/dev/null 2>&1 && node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 22 ? 0 : 1)' >/dev/null 2>&1; then
+          echo "supported=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "supported=false" >> "$GITHUB_OUTPUT"
+        fi
     - name: Set up the supported Action runtime
+      if: steps.runtime.outputs.supported != 'true'
       uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
       with:
         node-version: "24"
+        package-manager-cache: false
     - name: Install the pinned parser without lifecycle scripts
       shell: bash
       run: npm ci --ignore-scripts --omit=dev --no-audit --no-fund --prefix "$GITHUB_ACTION_PATH"

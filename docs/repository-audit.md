@@ -74,4 +74,6 @@ The generator uses only definite missing findings and verifiable existing direct
 
 Existing workflow files are never overwritten. Symlinked workflow parents are refused. Adding checks requires the current HEAD snapshot, so an old ref cannot silently become the basis for current writes. Read-only audits may still target an earlier full SHA.
 
+Generated repository secret scans run before package installation and package checks. This keeps dependency fixtures and generated output out of the scan on a fresh checkout. The generator does not delete existing files or promise a source-only scan on a reused checkout; use a clean workspace when running the generated workflow.
+
 Conditional prerequisites propagate to dependent checks unless an explicit supported status condition overrides the skipped dependency. Unconditional shell exits stop tracing, including inside package scripts and shell wrappers, so unreachable commands cannot count as validation.

@@ -119,7 +119,7 @@ function hasHiddenExpression(value) {
         }
         if (!quoted) body += char;
       }
-      if (!closed || /\b(?:secrets|vars|inputs|github)\b/.test(body))
+      if (!closed || /\b(?:secrets|vars|inputs|github)\b/i.test(body))
         return true;
     }
     return false;

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { parseDocument } from "yaml";
@@ -109,4 +111,55 @@ test("documented example can skip an unrelated job in enforce mode", () => {
   });
   assert.equal(plan.jobs[".github/workflows/ci.yml#test"].run, false);
   assert.equal(plan.jobs[".github/workflows/ci.yml#plan"].run, true);
+});
+
+test("Action retains supported caller runtimes and only bootstraps missing or old Node", () => {
+  const action = parseDocument(
+    fs.readFileSync(path.join(root, "action.yml"), "utf8"),
+  ).toJS();
+  const probe = action.runs.steps.find((step) => step.id === "runtime");
+  const setup = action.runs.steps.find((step) =>
+    step.uses?.startsWith("actions/setup-node@"),
+  );
+  assert(probe?.run, "Action must inspect the caller runtime before setup");
+  assert.equal(setup.if, "steps.runtime.outputs.supported != 'true'");
+  const task = fs.mkdtempSync(path.join(os.tmpdir(), "action-runtime-"));
+  try {
+    const bin = path.join(task, "bin");
+    fs.mkdirSync(bin);
+    for (const version of ["22.0.0", "24.1.0", "26.0.0", "20.9.0", null]) {
+      const output = path.join(task, "output");
+      fs.writeFileSync(output, "");
+      const node = path.join(bin, "node");
+      fs.rmSync(node, { force: true });
+      if (version)
+        fs.writeFileSync(
+          node,
+          "#!" +
+            process.execPath +
+            "\n" +
+            "Object.defineProperty(process.versions, 'node', {value: process.env.TEST_NODE_VERSION});\n" +
+            "require('node:vm').runInThisContext(process.argv[3]);\n",
+          { mode: 0o755 },
+        );
+      execFileSync(
+        "/bin/bash",
+        ["--noprofile", "--norc", "-e", "-o", "pipefail", "-c", probe.run],
+        {
+          env: {
+            PATH: bin,
+            GITHUB_OUTPUT: output,
+            TEST_NODE_VERSION: version ?? "",
+          },
+        },
+      );
+      assert.equal(
+        fs.readFileSync(output, "utf8").trim(),
+        "supported=" +
+          (version !== null && Number(version.split(".")[0]) >= 22),
+      );
+    }
+  } finally {
+    fs.rmSync(task, { recursive: true, force: true });
+  }
 });
