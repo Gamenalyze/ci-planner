@@ -1,6 +1,6 @@
 {
   "name": "@gamenalyze/ci-planner",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Free CI audits and conservative pull request plans for GitHub Actions",
   "type": "module",
   "license": "MIT",
@@ -14,7 +14,10 @@
     "./audit": "./src/audit.mjs",
     "./planner": "./src/planner.mjs",
     "./repository-audit": "./src/repository-audit.mjs",
-    "./check-proposals": "./src/check-proposals.mjs"
+    "./check-proposals": "./src/check-proposals.mjs",
+    "./reports": "./src/reports.mjs",
+    "./setup": "./src/setup.mjs",
+    "./fix-pr": "./src/fix-pr.mjs"
   },
   "files": [
     "bin/",
@@ -31,7 +34,7 @@
   ],
   "scripts": {
     "test": "node --test test/*.test.mjs",
-    "check": "node --check bin/ci-planner.mjs && node --check src/planner.mjs && node --check src/audit.mjs && node --check src/repository-audit.mjs && node --check src/json.mjs && node --check src/validation.mjs && node --check src/check-proposals.mjs"
+    "check": "node --check bin/ci-planner.mjs && node --check src/planner.mjs && node --check src/audit.mjs && node --check src/repository-audit.mjs && node --check src/json.mjs && node --check src/validation.mjs && node --check src/check-proposals.mjs && node --check src/reports.mjs && node --check src/setup.mjs && node --check src/fix-pr.mjs"
   },
   "dependencies": {
     "yaml": "2.9.1"

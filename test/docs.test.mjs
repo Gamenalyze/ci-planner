@@ -13,6 +13,8 @@ const documents = [
   "README.md",
   "docs/cli.md",
   "docs/repository-audit.md",
+  "docs/reports.md",
+  "docs/onboarding-and-fixes.md",
   "docs/configuration.md",
   "docs/github-actions.md",
   "docs/architecture.md",

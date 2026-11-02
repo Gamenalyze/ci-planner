@@ -1,4 +1,4 @@
-# Security — 0.2.1
+# Security — 0.3.0
 
 CI Planner analyzes untrusted repository metadata. It must not turn that metadata into privileged execution or successful evidence.
 
@@ -6,7 +6,7 @@ CI Planner analyzes untrusted repository metadata. It must not turn that metadat
 
 Use this repository's [private vulnerability reporting](https://github.com/Gamenalyze/ci-planner/security/advisories/new) for a skip bypass, trust-boundary issue, credential exposure or dependency vulnerability. Do not post secrets or private repository snapshots in public issues. No response-time guarantee or paid bounty is offered.
 
-The current 0.2.x line is the initial supported version. Fixes will be released through reviewed commits and versioned releases.
+Use the latest published version. Fixes ship through reviewed commits and versioned releases.
 
 ## Boundaries
 
@@ -31,6 +31,12 @@ Input contracts are owner assertions. Undeclared shared files, external state or
 
 CI Planner does not sign releases, approve deployment, alter coverage floors or replace privacy/release acceptance gates.
 
-Version 0.1.0 has a reported downstream-invalidation skip defect. Upgrade to 0.2.0 before using enforce mode. The default remains shadow.
+Version 0.1.0 has a reported downstream-invalidation skip defect. Upgrade to 0.2.1 or later before using enforce mode. The default remains shadow.
+
+Readable reports are escaped and bounded, but names and paths can still reveal private structure. Keep summaries within the repository's access controls. Optional completeness reports and summary append failures cannot grant extra skips.
+
+Guided init writes only missing setup files on explicit --write, in a clean local checkout. It never infers complete input knowledge or modifies existing CI. The generated advisory job uses read-only permissions and cannot enable skips.
+
+The separate fix --open-pr operation is an explicit owner-authorized remote write. It is local-only, requires local HEAD to equal the remote default branch, creates only a new generated workflow, never updates existing refs, and opens a draft PR. Its credential needs branch/workflow and PR write access; never provide it to the read-only Action or untrusted PR analysis. Opening the draft may start normal repository CI. A partial response preserves the new branch for inspection rather than deleting uncertain evidence.
 
 The optional audit-repo --add-checks flag writes a new reviewable workflow; the audit itself does not execute it. Only the owner can commit and enable that workflow. Existing CI and native runner placement are preserved.

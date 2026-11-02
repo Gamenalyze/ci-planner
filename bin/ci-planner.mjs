@@ -12,6 +12,10 @@ import {
 import { execFileSync } from "node:child_process";
 import { main as audit } from "../src/audit.mjs";
 import { planRepository, VERSION } from "../src/planner.mjs";
+import { initializeRepository } from "../src/setup.mjs";
+import { previewFix, openFixPullRequest } from "../src/fix-pr.mjs";
+import { renderMarkdown } from "../src/reports.mjs";
+import { uniqueJSON } from "../src/json.mjs";
 
 const help =
   "CI Planner " +
@@ -19,16 +23,118 @@ const help =
   "\n\n" +
   "ci-planner audit --help\n" +
   "ci-planner audit-repo [--root DIR] [--ref HEAD|SHA] [--add-checks]\n" +
+  "ci-planner init [--root DIR] [--action-ref SHA|vX.Y.Z] [--write]\n" +
+  "ci-planner fix [--root DIR] [--repository OWNER/REPO --open-pr]\n" +
+  "ci-planner report --input report.json\n" +
   "ci-planner plan --base SHA --head SHA [--merge SHA] [--root DIR] [--repository OWNER/REPO]\n" +
-  "  [--event pull_request] [--workflow .github/workflows/ci.yml] [--enforce] [--force] [--github-output]\n\n" +
+  "  [--event pull_request] [--workflow .github/workflows/ci.yml] [--enforce] [--force] [--github-output] [--audit-repo]\n\n" +
+  "Result commands accept --format json|markdown and --summary (append a GitHub job summary).\n" +
+  "init/fix preview by default. --write creates local setup files; --open-pr explicitly publishes a draft fix PR.\n" +
   "Plans read committed Git objects and the policy from base. Default: shadow (all jobs run).\n" +
   "Enforcement also needs a base policy opt-in and an exact tested merge commit.\n";
+
+/** Parse new command options without shell interpolation, implicit values or duplicate flags. */
+function parseOptions(args, values, booleans = []) {
+  const result = {};
+  for (let i = 0; i < args.length; i++) {
+    const key = args[i];
+    if (![...values, ...booleans].includes(key) || Object.hasOwn(result, key))
+      throw Error("Unknown or repeated option");
+    if (booleans.includes(key)) result[key] = true;
+    else {
+      const value = args[++i];
+      if (!value || value.startsWith("--")) throw Error("Missing option value");
+      result[key] = value;
+    }
+  }
+  return result;
+}
 try {
-  const [command, ...args] = process.argv.slice(2);
+  const [command, ...rawArgs] = process.argv.slice(2);
+  const presentation = {
+    format: command === "report" ? "markdown" : "json",
+    summary: false,
+  };
+  const args = [];
+  const seen = new Set();
+  for (let i = 0; i < rawArgs.length; i++) {
+    const key = rawArgs[i];
+    if (["--format", "--summary"].includes(key)) {
+      if (seen.has(key)) throw Error("Repeated presentation option");
+      seen.add(key);
+      if (key === "--summary") presentation.summary = true;
+      else {
+        const format = rawArgs[++i];
+        if (!["json", "markdown"].includes(format))
+          throw Error("Expected --format json or markdown");
+        presentation.format = format;
+      }
+    } else args.push(key);
+  }
+  if (presentation.summary && !process.env.GITHUB_STEP_SUMMARY)
+    throw Error("--summary requires GITHUB_STEP_SUMMARY");
+  const emit = (result) => {
+    const markdown =
+      presentation.summary || presentation.format === "markdown"
+        ? renderMarkdown(result)
+        : null;
+    if (presentation.summary) {
+      try {
+        fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, markdown + "\n");
+      } catch {
+        process.stderr.write(
+          "CI Planner: summary unavailable; structured result remains valid\n",
+        );
+      }
+    }
+    process.stdout.write(
+      presentation.format === "markdown"
+        ? markdown
+        : JSON.stringify(result, null, 2) + "\n",
+    );
+  };
   if (command === "--help" || command === undefined) process.stdout.write(help);
   else if (command === "--version") process.stdout.write(VERSION + "\n");
-  else if (command === "audit") process.stdout.write(await audit(args));
-  else if (command === "audit-repo") {
+  else if (command === "audit") {
+    const result = await audit(args);
+    if (args.length === 1 && args[0] === "--help") process.stdout.write(result);
+    else emit(uniqueJSON(result));
+  } else if (command === "report") {
+    const opts = parseOptions(args, ["--input"]);
+    if (!opts["--input"]) throw Error("Expected --input report.json");
+    const stat = fs.statSync(opts["--input"]);
+    if (!stat.isFile() || stat.size > 4 * 1024 * 1024)
+      throw Error("Expected report file up to 4 MiB");
+    const input = fs.readFileSync(opts["--input"]);
+    if (input.length > 4 * 1024 * 1024) throw Error("Report exceeds 4 MiB");
+    let result;
+    try {
+      result = uniqueJSON(input.toString("utf8"));
+    } catch {
+      throw Error("Invalid report JSON; object keys must be unique");
+    }
+    renderMarkdown(result); // Validate even when JSON output was requested.
+    emit(result);
+  } else if (command === "init") {
+    const opts = parseOptions(args, ["--root", "--action-ref"], ["--write"]);
+    emit(
+      initializeRepository({
+        root: opts["--root"] ?? ".",
+        actionRef: opts["--action-ref"],
+        write: opts["--write"] === true,
+      }),
+    );
+  } else if (command === "fix") {
+    const opts = parseOptions(args, ["--root", "--repository"], ["--open-pr"]);
+    emit(
+      opts["--open-pr"]
+        ? await openFixPullRequest({
+            root: opts["--root"] ?? ".",
+            repository: opts["--repository"],
+          })
+        : previewFix({ root: opts["--root"] ?? "." }),
+    );
+  } else if (command === "audit-repo") {
     const opts = {};
     for (let i = 0; i < args.length; i++) {
       const key = args[i];
@@ -68,7 +174,7 @@ try {
         "Only the explicit add-checks option may write one new workflow. It never commits, pushes or starts CI.",
       );
     }
-    process.stdout.write(JSON.stringify(report, null, 2) + "\n");
+    emit(report);
   } else if (command === "plan") {
     const options = {};
     for (let i = 0; i < args.length; i++) {
@@ -85,11 +191,16 @@ try {
           "--enforce",
           "--force",
           "--github-output",
+          "--audit-repo",
         ].includes(key) ||
         Object.hasOwn(options, key)
       )
         throw Error("Unknown or repeated argument");
-      if (["--enforce", "--force", "--github-output"].includes(key))
+      if (
+        ["--enforce", "--force", "--github-output", "--audit-repo"].includes(
+          key,
+        )
+      )
         options[key] = true;
       else {
         const value = args[++i];
@@ -122,6 +233,20 @@ try {
     );
     if (workflow && !jobs.length)
       throw Error("Requested workflow is absent from the tested commit");
+    if (options["--audit-repo"]) {
+      try {
+        plan.repositoryAudit = auditRepositorySnapshot(
+          readRepositorySnapshot({
+            root: options["--root"] ?? ".",
+            ref: options["--merge"] ?? options["--head"],
+          }),
+        );
+      } catch {
+        plan.auditWarning =
+          "Repository audit unavailable; plan decisions are unchanged.";
+      }
+    }
+    emit(plan);
     if (options["--github-output"]) {
       const run = Object.fromEntries(jobs.map((job) => [job.id, job.run]));
       fs.appendFileSync(
@@ -135,7 +260,6 @@ try {
           "\nready=true\n",
       );
     }
-    process.stdout.write(JSON.stringify(plan, null, 2) + "\n");
   } else throw Error("Unknown command; use --help");
 } catch (error) {
   process.stderr.write("CI Planner: " + error.message + "\n");

@@ -1,6 +1,6 @@
 # CI Planner
 
-Free CI audits and conservative pull request plans for GitHub Actions. Version 0.2.1.
+Free CI audits and conservative pull request plans for GitHub Actions. Version 0.3.0.
 
 CI Planner helps you see where CI time goes and decide which jobs a PR needs. It rebuilds its job graph from committed workflows on each plan. It runs locally or on your runners. No account, model API key, paid tier or hosted service is required.
 
@@ -14,12 +14,15 @@ CI Planner helps you see where CI time goes and decide which jobs a PR needs. It
 - Produce a JSON plan bound to the base, head and optional tested merge commit.
 - Explain each run or suggested skip; keep required producers when a consumer runs.
 - Gate jobs through the included Action after an owner enables enforcement.
+- Read plan, audit and setup reports in Markdown or a GitHub job summary.
+- Preview advisory setup files with init, and write them only on request.
+- Preview supported missing-check fixes and explicitly publish them as draft PRs.
 
 Unknown inputs, structural changes, shared runtime/control changes, new jobs, hidden inputs and mutable action references keep validation fresh. An invalid or unavailable planner must make the workflow run its existing checks.
 
 ## Install
 
-For GitHub Actions, use `Gamenalyze/ci-planner@v0.2.1` with the [complete workflow example](examples/pull-request.yml). Start in shadow mode and keep the run-all fallback. For production, pin the Action to the reviewed release commit SHA. The Action runs on your runner; it needs no CI Planner account, API key or hosted service.
+For GitHub Actions, use `Gamenalyze/ci-planner@v0.3.0` with the [complete workflow example](examples/pull-request.yml). Start in shadow mode and keep the run-all fallback. For production, pin the Action to the reviewed release commit SHA. The Action runs on your runner; it needs no CI Planner account, API key or hosted service.
 
 Requires Node.js 22 or newer and Git. Live audits also need an installed, authenticated [GitHub CLI](https://cli.github.com/). CI tests Node.js 22 and 24; the Action preserves an existing Node.js 22+ runtime and installs Node.js 24 only when needed.
 
@@ -34,6 +37,13 @@ npm test
 After installing the package locally, its executable is named `ci-planner`. The package is not yet published to npm; the clone commands above work now.
 
 ## Audit CI
+
+For guided adoption, start with these offline previews:
+
+    node bin/ci-planner.mjs init --root /path/to/source --format markdown
+    node bin/ci-planner.mjs fix --root /path/to/source --format markdown
+
+Setup creates files only with --write; existing policies and workflows are preserved. New input contracts are incomplete and shadow-only until owner review. To open a supported fix as a draft PR, run fix --repository OWNER/REPO --open-pr from a trusted local checkout matching the remote default branch. That explicit operation may start normal repository CI. See [guided setup and fix PRs](docs/onboarding-and-fixes.md).
 
 ```sh
 node bin/ci-planner.mjs audit --repository OWNER/REPO --workflow ci.yml --limit 20
@@ -64,6 +74,8 @@ To enable skips, commit an input policy to the target branch, request `--enforce
 - [Security and trust boundaries](SECURITY.md)
 - [Contributing and validation](CONTRIBUTING.md)
 - [Release notes](CHANGELOG.md)
+- [Readable reports and GitHub job summaries](docs/reports.md)
+- [Guided setup and draft fix PRs](docs/onboarding-and-fixes.md)
 - [Complete example workflow](examples/pull-request.yml) and [example input policy](examples/policy.json)
 
 The [repository completeness audit](docs/repository-audit.md) finds missing or uncertain PR checks from source/config evidence. Run `node bin/ci-planner.mjs audit-repo --root /path/to/source`. It never edits CI by itself.
@@ -74,6 +86,6 @@ Public APIs and safety decisions have JSDoc and inline annotations in [the sourc
 
 The software is free under the [MIT license](LICENSE), for public and private repositories. Your existing runner, storage and network charges still apply. There is no required paid AI service.
 
-This version supports GitHub Actions workflow/job discovery and explicit file input contracts. It does not yet provide automatic source dependency inference, optimization PRs, cross-run reuse, shard balancing or a hosted GitHub App. Timing history never grants permission to skip a job.
+This version supports GitHub Actions workflow/job discovery, explicit file input contracts and additive draft PRs for supported missing checks. It does not yet provide source dependency inference, general optimization PRs, cross-run reuse, shard balancing or a hosted GitHub App. Timing history never grants permission to skip a job.
 
 It does not change release rules, coverage floors, signing rules, runner placement or branch protection. Native app compilation can remain on internal runners while source checks use other runners.

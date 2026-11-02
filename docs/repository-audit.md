@@ -1,4 +1,4 @@
-# Repository completeness audit — 0.2.1
+# Repository completeness audit — 0.3.0
 
 CI Planner can compare a repository's contents with the checks invoked by its GitHub Actions workflows.
 
@@ -77,3 +77,9 @@ Existing workflow files are never overwritten. Symlinked workflow parents are re
 Generated repository secret scans run before package installation and package checks. This keeps dependency fixtures and generated output out of the scan on a fresh checkout. The generator does not delete existing files or promise a source-only scan on a reused checkout; use a clean workspace when running the generated workflow.
 
 Conditional prerequisites propagate to dependent checks unless an explicit supported status condition overrides the skipped dependency. Unconditional shell exits stop tracing, including inside package scripts and shell wrappers, so unreachable commands cannot count as validation.
+
+## Reports and draft fix PRs
+
+Add --format markdown or --summary for a readable view of these findings. The optional Action audit-repository input includes the same static evidence in its job summary without altering job decisions. See [reports](reports.md).
+
+The new fix command previews the supported additive workflow without writing a local file. Explicit fix --repository OWNER/REPO --open-pr can publish it as a draft PR from a trusted local checkout at the remote default branch. This separate operation may start normal PR CI and requires write permission. It does not change audit-repo's read-only default or --add-checks semantics. See [guided setup and fix publication](onboarding-and-fixes.md).

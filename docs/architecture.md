@@ -1,4 +1,4 @@
-# Architecture and API — 0.2.1
+# Architecture and API — 0.3.0
 
 ## Components
 
@@ -6,10 +6,13 @@
 | ------------------ | --------------------------------------------------------------------------- |
 | src/audit.mjs      | Bounded GitHub metadata collection and replayable duration analysis.        |
 | src/planner.mjs    | YAML job discovery, policy validation, selection and immutable Git reading. |
+| src/reports.mjs    | Escaped, bounded Markdown views and summary presentation.                   |
+| src/setup.mjs      | Pure onboarding proposals and explicit exclusive local writes.              |
+| src/fix-pr.mjs     | Offline fix previews and explicit local-only draft PR publication.          |
 | bin/ci-planner.mjs | Argument validation, JSON output and Action output boundary.                |
 | action.yml         | Small adapter using pinned package inputs and shell argument arrays.        |
 
-There is no server or shared mutable planning database. Parallel PR runs read their own commits and write only to their own stdout/Action output file. Plans bind repository, base, head, merge and event. A plan is not portable authority for another PR.
+There is no server or shared mutable planning database. Parallel PR runs read their own commits and write only to their own stdout, Action output file and job summary. Plans bind repository, base, head, merge and event. A plan is not portable authority for another PR.
 
 ## Planning flow
 
@@ -38,17 +41,23 @@ The audit validates identities, sums job intervals, clips work after the first f
 
 ## API
 
-All exported functions have JSDoc annotations. Import from the installed package's /audit or /planner entry points, or from the source modules.
+Public functions have source annotations. Import from the installed package's /audit, /planner, /repository-audit, /check-proposals, /reports, /setup or /fix-pr entry points.
 
-| Export                          | Input                                                                | Result                                                                          |
-| ------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| collectSnapshot(options, read?) | repository, optional branch/workflow/limit, injectable GET transport | Promise of schema-versioned audit snapshot.                                     |
-| auditSnapshot(snapshot)         | Bounded metadata snapshot                                            | Validated audit report.                                                         |
-| githubRead(endpoint)            | REST endpoint                                                        | GET response through installed gh. The collector constructs metadata endpoints. |
-| discoverWorkflows(sources)      | workflow path → YAML text                                            | Map of job nodes, needs edges, implicit inputs and uncertainty.                 |
-| patternMatches(pattern, path)   | Supported input glob and repository path                             | Boolean; throws for unsupported syntax.                                         |
-| buildPlan(options)              | Normalized data model                                                | Pure versioned plan.                                                            |
-| planRepository(options)         | root, full base/head, optional merge and planning flags              | Plan from verified Git objects.                                                 |
+| Export                                | Input                                                                | Result                                                                          |
+| ------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| collectSnapshot(options, read?)       | repository, optional branch/workflow/limit, injectable GET transport | Promise of schema-versioned audit snapshot.                                     |
+| auditSnapshot(snapshot)               | Bounded metadata snapshot                                            | Validated audit report.                                                         |
+| githubRead(endpoint)                  | REST endpoint                                                        | GET response through installed gh. The collector constructs metadata endpoints. |
+| discoverWorkflows(sources)            | workflow path → YAML text                                            | Map of job nodes, needs edges, implicit inputs and uncertainty.                 |
+| patternMatches(pattern, path)         | Supported input glob and repository path                             | Boolean; throws for unsupported syntax.                                         |
+| buildPlan(options)                    | Normalized data model                                                | Pure versioned plan.                                                            |
+| planRepository(options)               | root, full base/head, optional merge and planning flags              | Plan from verified Git objects.                                                 |
+| renderMarkdown(report)                | Supported structured result                                          | Escaped bounded Markdown; no mutation or authority changes.                     |
+| proposeSetup(snapshot, options)       | Immutable snapshot and optional reviewed Action ref                  | Advisory workflow and incomplete shadow policy preview.                         |
+| initializeRepository(options)         | root, optional write and actionRef                                   | Git-backed preview or exclusive local setup files.                              |
+| previewFix(options)                   | root                                                                 | Additive workflow proposal and before/after static audit counts.                |
+| openFixPullRequest(options, request?) | root, explicit repository, injectable GET/POST transport             | Draft PR receipt after exact default-branch binding, or a no-op preview.        |
+| fixPullRequestBody(preview, identity) | Generated preview and repository/branch/base                         | Bounded explanation, limitations and rollback.                                  |
 
 Use planRepository when driving CI. buildPlan is a pure model for tests and trusted adapters; its verifiedMerge flag must never be accepted from untrusted PR JSON. CLI consumers must check exit status, source identity and output readiness.
 
@@ -64,8 +73,14 @@ The tool does not execute repository scripts to discover inputs. That limits inf
 
 Tests cover timing/attempt errors, pagination, graph discovery, producer retention, unsupported syntax, policy trust, merge parents, dirty checkout isolation and CLI outputs. Fixtures use generic repositories and data.
 
-Future work includes source dependency inference, optimization proposals, richer observations and verified reuse. Those need separate adversarial evidence and must preserve current fallback behavior. No hosted App or automatic workflow rewriting is shipped in 0.2.1.
+Future work includes source dependency inference, general performance optimization proposals, richer observations and verified reuse. Those need separate adversarial evidence and must preserve current fallback behavior. The shipped fix publisher adds one new workflow only on explicit owner invocation; it does not rewrite existing CI or provide a hosted App.
 
 ## Repository completeness audit
 
 The repository-audit module compares Node/TypeScript signals with traced PR invocations. It follows package scripts, simple shell wrappers, local reusable workflows and composite actions. Reports distinguish covered, conditional, unverified and missing checks and retain evidence locations. See [the full guide](repository-audit.md). This analysis does not change selection policy or add jobs automatically.
+
+## Setup and publication boundaries
+
+Reports are a presentation layer: they cannot change a job decision or plan hash. Setup reads immutable Git objects, creates incomplete shadow contracts and leaves existing CI intact. Explicit writes require a clean local checkout and fixed exclusive target paths.
+
+The fix publisher regenerates its proposal from Git, requires the exact remote default-branch commit, and uses bounded GET/POST GitHub calls to create a new tree, commit, branch and draft PR. It never updates an existing ref. Branch collisions, base drift and CI event contexts stop publication. A partial response leaves the created branch visible for recovery. Normal PR CI can start after publication. See [setup and fixes](onboarding-and-fixes.md) and [reports](reports.md).
