@@ -1,0 +1,55 @@
+name: CI Planner
+description: Free, conservative pull request plans with shadow mode and run-all fallback.
+inputs:
+  base:
+    description: Full trusted base commit SHA (must be fetched).
+    required: true
+  head:
+    description: Full PR head commit SHA (must be fetched).
+    required: true
+  merge:
+    description: Tested merge SHA with exact base/head parents; needed to enforce skips.
+    default: ""
+  workflow:
+    description: Workflow path whose job IDs are exported.
+    required: true
+  repository-path:
+    description: Path to the source checkout.
+    default: "."
+  enforce:
+    description: Request skips (also requires base policy opt-in and verified merge).
+    default: "false"
+outputs:
+  run:
+    description: JSON object mapping job IDs to run booleans.
+    value: ${{ steps.plan.outputs.run }}
+  ready:
+    description: True only after successful planning; consumers must run on any other value.
+    value: ${{ steps.plan.outputs.ready }}
+  plan-hash:
+    description: Digest binding inputs and decisions to this plan.
+    value: ${{ steps.plan.outputs.plan_hash }}
+  mode:
+    description: shadow or enforce.
+    value: ${{ steps.plan.outputs.mode }}
+runs:
+  using: composite
+  steps:
+    - name: Install the pinned parser without lifecycle scripts
+      shell: bash
+      run: npm ci --ignore-scripts --omit=dev --no-audit --no-fund --prefix "$GITHUB_ACTION_PATH"
+    - name: Plan from committed inputs
+      id: plan
+      shell: bash
+      env:
+        PLANNER_ROOT: ${{ inputs.repository-path }}
+        PLANNER_BASE: ${{ inputs.base }}
+        PLANNER_HEAD: ${{ inputs.head }}
+        PLANNER_MERGE: ${{ inputs.merge }}
+        PLANNER_WORKFLOW: ${{ inputs.workflow }}
+        PLANNER_ENFORCE: ${{ inputs.enforce }}
+      run: |
+        args=(plan --root "$PLANNER_ROOT" --repository "$GITHUB_REPOSITORY" --base "$PLANNER_BASE" --head "$PLANNER_HEAD" --event "$GITHUB_EVENT_NAME" --workflow "$PLANNER_WORKFLOW" --github-output)
+        if [[ -n "$PLANNER_MERGE" ]]; then args+=(--merge "$PLANNER_MERGE"); fi
+        if [[ "$PLANNER_ENFORCE" == true ]]; then args+=(--enforce); fi
+        node "$GITHUB_ACTION_PATH/bin/ci-planner.mjs" "${args[@]}"

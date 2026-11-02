@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "mode": "shadow",
+  "globals": ["build/**"],
+  "ignored": ["README.md", "docs/**"],
+  "jobs": {
+    ".github/workflows/ci.yml#test": {
+      "inputsComplete": true,
+      "inputs": ["src/**", "test/**"]
+    }
+  }
+}

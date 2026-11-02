@@ -1,0 +1,48 @@
+# Copy into .github/workflows/ci.yml in the source repository.
+# Pin CI Planner to a reviewed full commit SHA in production.
+name: Source CI
+on: pull_request
+permissions:
+  contents: read
+concurrency:
+  group: source-ci-${{ github.repository }}-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+  cancel-in-progress: true
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    outputs:
+      ready: ${{ steps.scope.outputs.ready }}
+      run: ${{ steps.scope.outputs.run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: "24"
+      - uses: Gamenalyze/ci-planner@v0.1.0
+        id: scope
+        with:
+          base: ${{ github.event.pull_request.base.sha }}
+          head: ${{ github.event.pull_request.head.sha }}
+          merge: ${{ github.sha }}
+          workflow: .github/workflows/ci.yml
+          enforce: "false"
+  test:
+    needs: plan
+    if: >-
+      ${{ always() && !cancelled() &&
+          (needs.plan.outputs.ready != 'true' ||
+           fromJSON(needs.plan.outputs.run).test != false) }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: "24"
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm test

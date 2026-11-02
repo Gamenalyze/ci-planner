@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Gamenalyze/ci-planner/blob/main/policy.schema.json",
+  "title": "CI Planner input policy",
+  "description": "Owner-reviewed inputs loaded from the trusted base commit.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "mode", "jobs"],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "mode": {
+      "enum": ["shadow", "enforce"],
+      "description": "Shadow runs every job. Enforcement also needs caller opt-in and exact tested merge."
+    },
+    "globals": {
+      "$ref": "#/$defs/patterns"
+    },
+    "ignored": {
+      "$ref": "#/$defs/patterns",
+      "description": "Explicitly unrelated paths; broad ignores can hide new inputs."
+    },
+    "jobs": {
+      "type": "object",
+      "maxProperties": 1000,
+      "additionalProperties": false,
+      "patternProperties": {
+        "^\\.github/workflows/[^/#\\s]+\\.ya?ml#[A-Za-z_][A-Za-z0-9_-]*$": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["inputs", "inputsComplete"],
+          "properties": {
+            "inputsComplete": {
+              "type": "boolean",
+              "description": "Owner assertion, not inferred proof. False always runs the job."
+            },
+            "inputs": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/patterns"
+                },
+                {
+                  "minItems": 1
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "patterns": {
+      "type": "array",
+      "maxItems": 200,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 500,
+        "description": "Repository-relative literal, * within a segment, or ** as a complete segment. No exclusions."
+      }
+    }
+  }
+}

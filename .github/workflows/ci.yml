@@ -1,0 +1,31 @@
+name: CI Planner
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ci-planner-${{ github.repository }}-${{ github.event.pull_request.number || github.ref }}-${{ github.sha }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: "24"
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run check
+      - run: npm test
+      - name: Smoke-test the distributable
+        shell: bash
+        run: |
+          task_dir=$(mktemp -d)
+          npm pack --ignore-scripts --pack-destination "$task_dir"
+          npm install --ignore-scripts --no-audit --no-fund --prefix "$task_dir/install" "$task_dir"/*.tgz
+          "$task_dir/install/node_modules/.bin/ci-planner" --version
