@@ -1,4 +1,4 @@
-# Security — 0.1.0
+# Security — 0.2.0
 
 CI Planner analyzes untrusted repository metadata. It must not turn that metadata into privileged execution or successful evidence.
 
@@ -6,7 +6,7 @@ CI Planner analyzes untrusted repository metadata. It must not turn that metadat
 
 Use this repository's [private vulnerability reporting](https://github.com/Gamenalyze/ci-planner/security/advisories/new) for a skip bypass, trust-boundary issue, credential exposure or dependency vulnerability. Do not post secrets or private repository snapshots in public issues. No response-time guarantee or paid bounty is offered.
 
-The current 0.1.x line is the initial supported version. Fixes will be released through reviewed commits and versioned releases.
+The current 0.2.x line is the initial supported version. Fixes will be released through reviewed commits and versioned releases.
 
 ## Boundaries
 
@@ -30,3 +30,7 @@ Snapshots and plan job names can still reveal private project structure. Treat t
 Input contracts are owner assertions. Undeclared shared files, external state or an incorrect ignored pattern can make a scope wrong. Start in shadow mode, retain sensitive checks and run periodic full validation.
 
 CI Planner does not sign releases, approve deployment, alter coverage floors or replace privacy/release acceptance gates.
+
+Version 0.1.0 has a reported downstream-invalidation skip defect. Upgrade to 0.2.0 before using enforce mode. The default remains shadow.
+
+The optional audit-repo --add-checks flag writes a new reviewable workflow; the audit itself does not execute it. Only the owner can commit and enable that workflow. Existing CI and native runner placement are preserved.

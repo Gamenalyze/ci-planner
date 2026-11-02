@@ -249,3 +249,17 @@ test("offline CLI needs no dependencies or gh; malformed options fail and import
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("dot and parent repository components are rejected before authenticated reads", async () => {
+  for (const repository of ["../..", "owner/..", "./repo", "../repo"]) {
+    let calls = 0;
+    await assert.rejects(
+      collectSnapshot({ repository }, () => {
+        calls++;
+        return { workflow_runs: [] };
+      }),
+      /repository/i,
+    );
+    assert.equal(calls, 0);
+  }
+});

@@ -10,18 +10,56 @@ concurrency:
   cancel-in-progress: true
 jobs:
   validate:
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22", "24"]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
-          node-version: "24"
+          node-version: ${{ matrix.node }}
+          cache: npm
       - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: node --version
       - run: npm run check
       - run: npm test
+      - run: npm audit --omit=dev --audit-level=high
+      - name: Install verified CI scanners
+        shell: bash
+        run: |
+          tools_dir="$RUNNER_TEMP/ci-planner-tools"
+          mkdir -p "$tools_dir"
+          curl -fsSL --retry 3 --max-time 60 -o "$tools_dir/actionlint.tgz" https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $tools_dir/actionlint.tgz" | sha256sum --check --strict
+          tar -xzf "$tools_dir/actionlint.tgz" -C "$tools_dir" actionlint
+          curl -fsSL --retry 3 --max-time 60 -o "$tools_dir/gitleaks.tgz" https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $tools_dir/gitleaks.tgz" | sha256sum --check --strict
+          tar -xzf "$tools_dir/gitleaks.tgz" -C "$tools_dir" gitleaks
+          echo "$tools_dir" >> "$GITHUB_PATH"
+      - run: actionlint .github/workflows/ci.yml examples/pull-request.yml
+      - run: gitleaks dir . --redact --no-banner
+      - name: Exercise the shipped Action against this repository
+        uses: ./
+        id: self-plan
+        with:
+          base: ${{ github.event.pull_request.base.sha || github.event.before }}
+          head: ${{ github.event.pull_request.head.sha || github.sha }}
+          workflow: .github/workflows/ci.yml
+          enforce: "false"
+      - name: Verify Action outputs and run completeness audit
+        env:
+          PLANNER_READY: ${{ steps.self-plan.outputs.ready }}
+          PLANNER_MODE: ${{ steps.self-plan.outputs.mode }}
+          PLANNER_RUN: ${{ steps.self-plan.outputs.run }}
+        run: |
+          node -e 'const assert = require("node:assert/strict"); assert.equal(process.env.PLANNER_READY, "true"); assert.equal(process.env.PLANNER_MODE, "shadow"); assert.equal(JSON.parse(process.env.PLANNER_RUN).validate, true);'
+          node bin/ci-planner.mjs audit-repo --root . > "$RUNNER_TEMP/ci-completeness.json"
       - name: Smoke-test the distributable
         shell: bash
         run: |

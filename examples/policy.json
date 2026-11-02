@@ -6,7 +6,8 @@
   "jobs": {
     ".github/workflows/ci.yml#test": {
       "inputsComplete": true,
-      "inputs": ["src/**", "test/**"]
+      "inputs": ["src/**", "test/**"],
+      "controlNeeds": ["plan"]
     }
   }
 }

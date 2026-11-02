@@ -1,4 +1,4 @@
-# GitHub Actions integration — 0.1.0
+# GitHub Actions integration — 0.2.0
 
 Use the [complete workflow example](../examples/pull-request.yml) as a starting point. It targets Node source tests. Preserve your own runner labels, permissions, required checks and release rules.
 
@@ -12,7 +12,7 @@ Use the [complete workflow example](../examples/pull-request.yml) as a starting 
 - Run controlled jobs when planning fails, outputs are missing, or a job is absent from the output map.
 - Start in shadow mode. Set enforce: 'true' only after the target branch has an enforce policy and the input contracts have been reviewed.
 
-The Action requires Node.js 22+ and npm on the planning runner. It installs the single exact parser dependency from its own lockfile with lifecycle scripts disabled. It does not install or execute the PR's dependencies.
+The Action sets up Node.js 24 itself. The standalone CLI supports Node.js 22+. It installs the single exact parser dependency from its own lockfile with lifecycle scripts disabled. It does not install or execute the PR's dependencies.
 
 ## Inputs and outputs
 

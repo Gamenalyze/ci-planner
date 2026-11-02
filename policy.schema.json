@@ -44,6 +44,16 @@
                   "minItems": 1
                 }
               ]
+            },
+            "controlNeeds": {
+              "type": "array",
+              "maxItems": 100,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$"
+              },
+              "description": "Trusted owner assertion: these needs edges provide ordering/gating only, never runtime data or artifacts. Defaults to no control-only edges."
             }
           }
         }

@@ -1,4 +1,4 @@
-# Contributing — 0.1.0
+# Contributing — 0.2.0
 
 Contributions are welcome. The core engine, adapter and docs remain free under MIT.
 
@@ -26,6 +26,6 @@ Never weaken coverage, required checks or input completeness to make a demo appe
 
 ## Review and releases
 
-Keep changes small and reviewable. CI runs syntax checks, tests, documentation link checks and a package smoke test in one job. A maintainer reviews changes to policy semantics, Action outputs and dependencies before release.
+Keep changes small and reviewable. CI runs syntax checks, tests, documentation link checks and a package smoke test on Node.js 22 and 24. A maintainer reviews changes to policy semantics, Action outputs and dependencies before release.
 
 Use semantic versions. Keep package.json, package-lock.json, the exported engine version and CHANGELOG.md aligned. Tag only a tested commit. Production users should pin Actions to a reviewed SHA rather than relying on a mutable tag.
