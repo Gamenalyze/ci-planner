@@ -1,4 +1,4 @@
-# CLI reference — 0.2.1
+# CLI reference — 0.3.0
 
 ## Setup
 
@@ -74,6 +74,18 @@ The plan hash binds the engine version, source identities, normalized base polic
 Action outputs are `run` (job-ID boolean map), `ready=true`, `mode`, and `plan_hash`. The composite Action exposes `plan-hash` for its digest. If generation fails, it exports no ready flag. Gate consumers must run on missing outputs.
 
 ## Exit codes and limits
+
+All result commands accept --format json|markdown and --summary. Existing commands keep JSON by default. --summary appends to GITHUB_STEP_SUMMARY and keeps stdout in its requested format. The report command defaults to Markdown. It reads one JSON result up to 4 MiB; see [readable reports](reports.md) for escaping, truncation and interpretation limits.
+
+New owner-invoked commands:
+
+    ci-planner init [--root DIR] [--action-ref FULL_SHA|vMAJOR.MINOR.PATCH] [--write]
+    ci-planner fix [--root DIR] [--repository OWNER/REPO --open-pr]
+    ci-planner report --input report.json
+
+init previews advisory setup by default. --write exclusively creates missing setup files in a clean checkout. fix previews an additive workflow by default. --open-pr explicitly creates a new branch and draft PR from the matching remote default branch; it is local-only and may start normal PR CI. Read [setup and fix boundaries](onboarding-and-fixes.md) before using either write operation.
+
+plan also accepts --audit-repo to attach static completeness evidence from the exact tested commit. An unavailable optional audit records a warning and does not change decisions or the plan hash.
 
 Exit 0 means the command produced a valid result. Exit 1 means invalid arguments, inaccessible evidence, unsupported inputs or a failed read. Missing evidence does not produce an empty skip map.
 

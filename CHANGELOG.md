@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0 — 2026-11-02
+
+- Add bounded Markdown reports for plans, completeness audits, timing observations, setup previews and fix receipts. Existing result commands keep JSON by default.
+- Show readable GitHub job summaries from the Action, with optional completeness evidence that cannot change selection or plan hashes.
+- Add guided init previews and explicit exclusive writes for an advisory report workflow and an incomplete shadow policy. Existing policies and CI stay in place.
+- Add offline fix previews and explicit local-only draft PR publication for supported missing checks. Exact default-branch binding, branch-collision refusal and drift checks protect existing refs.
+- Document all new commands, APIs, permissions, review steps and rollback. No model calls, hosted backend, dependency inference, general optimization rewrites or cross-run reuse are introduced.
+
 ## 0.2.1 — 2026-11-02
 
 - Prepare the GitHub Marketplace Action metadata, versioned usage example and maintainer publishing instructions.

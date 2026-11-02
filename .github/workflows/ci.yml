@@ -52,6 +52,7 @@ jobs:
           head: ${{ github.event.pull_request.head.sha || github.sha }}
           workflow: .github/workflows/ci.yml
           enforce: "false"
+          audit-repository: "true"
       - name: Verify Action outputs and run completeness audit
         env:
           EXPECTED_NODE: ${{ matrix.node }}
@@ -69,3 +70,8 @@ jobs:
           npm pack --ignore-scripts --pack-destination "$task_dir"
           npm install --ignore-scripts --no-audit --no-fund --prefix "$task_dir/install" "$task_dir"/*.tgz
           "$task_dir/install/node_modules/.bin/ci-planner" --version
+          "$task_dir/install/node_modules/.bin/ci-planner" init --root "$GITHUB_WORKSPACE" --action-ref "$GITHUB_SHA" --format markdown > "$task_dir/setup.md"
+          "$task_dir/install/node_modules/.bin/ci-planner" fix --root "$GITHUB_WORKSPACE" --format markdown > "$task_dir/fix.md"
+          "$task_dir/install/node_modules/.bin/ci-planner" audit-repo --root "$GITHUB_WORKSPACE" > "$task_dir/audit.json"
+          "$task_dir/install/node_modules/.bin/ci-planner" report --input "$task_dir/audit.json" > "$task_dir/audit.md"
+          grep -q 'Repository checks' "$task_dir/audit.md"

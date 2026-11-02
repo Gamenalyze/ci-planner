@@ -1,4 +1,4 @@
-# GitHub Actions integration — 0.2.1
+# GitHub Actions integration — 0.3.0
 
 Use the [complete workflow example](../examples/pull-request.yml) as a starting point. It targets Node source tests. Preserve your own runner labels, permissions, required checks and release rules.
 
@@ -16,15 +16,19 @@ The Action uses the Node.js version already on PATH when it is 22 or newer. It p
 
 ## Inputs and outputs
 
-| Input           | Meaning                                                  |
-| --------------- | -------------------------------------------------------- |
-| base / head     | Required full commit SHAs from the PR event.             |
-| merge           | Tested synthetic merge SHA; required to enforce.         |
-| workflow        | Required full workflow path whose job IDs are exported.  |
-| repository-path | Checkout directory, default .                            |
-| enforce         | 'false' by default; a request, not authority on its own. |
+| Input            | Meaning                                                    |
+| ---------------- | ---------------------------------------------------------- |
+| base / head      | Required full commit SHAs from the PR event.               |
+| merge            | Tested synthetic merge SHA; required to enforce.           |
+| workflow         | Required full workflow path whose job IDs are exported.    |
+| repository-path  | Checkout directory, default .                              |
+| enforce          | 'false' by default; a request, not authority on its own.   |
+| summary          | 'true' by default; append a readable GitHub job summary.   |
+| audit-repository | 'false' by default; include static missing-check evidence. |
 
 Outputs are run (JSON job-ID → boolean), ready, plan-hash and mode. They are generated only after a valid plan. Each job's if condition must use a fail-to-run pattern.
+
+Summaries do not post PR comments or require write permission. Optional repository audit evidence cannot alter the plan or its hash. See [report semantics and bounds](reports.md). For an advisory introduction that leaves existing jobs alone, use the [guided setup](onboarding-and-fixes.md).
 
 ```yaml
 needs: plan

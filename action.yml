@@ -23,6 +23,12 @@ inputs:
   enforce:
     description: Request skips (also requires base policy opt-in and verified merge).
     default: "false"
+  summary:
+    description: Append a readable plan to the GitHub job summary; does not post PR comments.
+    default: "true"
+  audit-repository:
+    description: Include static missing-check evidence in the report without changing plan decisions.
+    default: "false"
 outputs:
   run:
     description: JSON object mapping job IDs to run booleans.
@@ -67,8 +73,12 @@ runs:
         PLANNER_MERGE: ${{ inputs.merge }}
         PLANNER_WORKFLOW: ${{ inputs.workflow }}
         PLANNER_ENFORCE: ${{ inputs.enforce }}
+        PLANNER_SUMMARY: ${{ inputs.summary }}
+        PLANNER_AUDIT: ${{ inputs.audit-repository }}
       run: |
         args=(plan --root "$PLANNER_ROOT" --repository "$GITHUB_REPOSITORY" --base "$PLANNER_BASE" --head "$PLANNER_HEAD" --event "$GITHUB_EVENT_NAME" --workflow "$PLANNER_WORKFLOW" --github-output)
         if [[ -n "$PLANNER_MERGE" ]]; then args+=(--merge "$PLANNER_MERGE"); fi
         if [[ "$PLANNER_ENFORCE" == true ]]; then args+=(--enforce); fi
+        if [[ "$PLANNER_SUMMARY" == true ]]; then args+=(--summary); fi
+        if [[ "$PLANNER_AUDIT" == true ]]; then args+=(--audit-repo); fi
         node "$GITHUB_ACTION_PATH/bin/ci-planner.mjs" "${args[@]}"
