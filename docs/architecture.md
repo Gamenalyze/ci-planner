@@ -1,4 +1,4 @@
-# Architecture and API — 0.2.0
+# Architecture and API — 0.2.1
 
 ## Components
 
@@ -64,7 +64,7 @@ The tool does not execute repository scripts to discover inputs. That limits inf
 
 Tests cover timing/attempt errors, pagination, graph discovery, producer retention, unsupported syntax, policy trust, merge parents, dirty checkout isolation and CLI outputs. Fixtures use generic repositories and data.
 
-Future work includes source dependency inference, optimization proposals, richer observations and verified reuse. Those need separate adversarial evidence and must preserve current fallback behavior. No hosted App or automatic workflow rewriting is shipped in 0.2.0.
+Future work includes source dependency inference, optimization proposals, richer observations and verified reuse. Those need separate adversarial evidence and must preserve current fallback behavior. No hosted App or automatic workflow rewriting is shipped in 0.2.1.
 
 ## Repository completeness audit
 

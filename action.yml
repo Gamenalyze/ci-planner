@@ -1,5 +1,9 @@
 name: CI Planner
 description: Free, conservative pull request plans with shadow mode and run-all fallback.
+author: GameAnalyze
+branding:
+  icon: git-pull-request
+  color: blue
 inputs:
   base:
     description: Full trusted base commit SHA (must be fetched).
