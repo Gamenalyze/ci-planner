@@ -73,3 +73,5 @@ Run ci-planner audit-repo --root DIR --add-checks to create .github/workflows/ci
 The generator uses only definite missing findings and verifiable existing direct Node check commands with an npm lockfile. It can add dependency checks and hash-verified secret/workflow scanners. It skips conditional/unverified findings, arbitrary wrappers, missing suites, native/build/container placement and unsupported package managers, and explains omissions. It cannot invent meaningful tests. It uses one unprivileged PR job, no extra secrets, disabled install hooks, and no privileged PR event.
 
 Existing workflow files are never overwritten. Symlinked workflow parents are refused. Adding checks requires the current HEAD snapshot, so an old ref cannot silently become the basis for current writes. Read-only audits may still target an earlier full SHA.
+
+Conditional prerequisites propagate to dependent checks unless an explicit supported status condition overrides the skipped dependency. Unconditional shell exits stop tracing, including inside package scripts and shell wrappers, so unreachable commands cannot count as validation.

@@ -558,3 +558,28 @@ test("quoted expression terminators cannot hide a secret execution input", () =>
     ).every((job) => job.run),
   );
 });
+
+test("implicit job and step conditions retain hidden external inputs", () => {
+  for (const condition of [
+    "vars.RUN_TESTS == 'true'",
+    "github.event.pull_request.draft == false",
+  ]) {
+    for (const patched of [
+      source.replaceAll(
+        "    runs-on:",
+        "    if: " + condition + "\n    runs-on:",
+      ),
+      source.replaceAll(
+        "      - run:",
+        "      - if: " + condition + "\n        run:",
+      ),
+    ])
+      assert(
+        Object.values(
+          buildPlan(
+            options({ enforce: true, workflows: { [workflow]: patched } }),
+          ).jobs,
+        ).every((job) => job.run),
+      );
+  }
+});

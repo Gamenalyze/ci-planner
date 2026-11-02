@@ -95,3 +95,5 @@ Data dependencies propagate in both directions: selected consumers retain produc
 A job may declare controlNeeds as a list of its needs job IDs when those edges provide ordering or planner gating only. This is a reviewed owner assertion: these edges must not provide runtime data, build artifacts or test inputs. No edge is control-only by default. Invalid edge names are rejected. The example test declares controlNeeds: [plan], so the planner can run without forcing unrelated tests. A policy change still retains full validation.
 
 Execution expressions in jobs and inherited env/defaults are checked for hidden contexts. Routing metadata such as concurrency, run-name and on does not make every job opaque; ordinary names containing words such as inputs are harmless. Stale policy job IDs produce warnings and new jobs still run. Duplicate JSON policy keys are rejected.
+
+Job and step if fields are expressions even without the usual expression delimiters. Hidden external contexts in either form keep the job fresh. Quoted terminator text inside an expression cannot hide a later secret or variable reference.

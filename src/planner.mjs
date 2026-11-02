@@ -281,7 +281,21 @@ export function discoverWorkflows(sources) {
         aliases ||
         job.environment !== undefined ||
         job.secrets !== undefined ||
-        hasHiddenExpression([workflow.env, workflow.defaults, execution]);
+        hasHiddenExpression([workflow.env, workflow.defaults, execution]) ||
+        [
+          job.if,
+          ...(Array.isArray(job.steps)
+            ? job.steps.map((step) => step?.if)
+            : []),
+        ].some(
+          (condition) =>
+            typeof condition === "string" &&
+            hasHiddenExpression(
+              condition.includes("$" + "{{")
+                ? condition
+                : "$" + "{{" + condition + "}}",
+            ),
+        );
       for (const reference of references) {
         if (typeof reference !== "string" || reference.includes("$" + "{{")) {
           opaque = true;

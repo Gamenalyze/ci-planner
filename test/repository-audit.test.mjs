@@ -242,3 +242,59 @@ test("listing tests is not running tests", () => {
   });
   assert.notEqual(check(audit(files), "tests").status, "covered");
 });
+
+test("conditional prerequisites make default dependent checks conditional", () => {
+  const gated =
+    "on: pull_request\njobs:\n  gate:\n    if: github.event.pull_request.draft == false\n    runs-on: ubuntu-latest\n    steps:\n      - run: node --version\n  test:\n    needs: gate\n    runs-on: ubuntu-latest\n    steps:\n      - run: npm test\n";
+  assert.equal(
+    check(audit(baseline({ ".github/workflows/ci.yml": gated })), "tests")
+      .status,
+    "conditional",
+  );
+});
+
+test("unreachable tests after exit are not counted in workflows, scripts or wrappers", () => {
+  const inputs = [
+    baseline({ ".github/workflows/ci.yml": workflow("exit 0; npm test") }),
+    baseline({
+      "package.json": JSON.stringify({
+        ...pkg,
+        scripts: { test: "exit 0; vitest run" },
+      }),
+    }),
+    baseline({
+      "package.json": JSON.stringify({
+        ...pkg,
+        scripts: { test: "bash scripts/test.sh" },
+      }),
+      "scripts/test.sh": "exit 0\nvitest run",
+    }),
+  ];
+  for (const files of inputs)
+    assert.notEqual(check(audit(files), "tests").status, "covered");
+});
+
+test("explicit always condition can override a conditionally skipped prerequisite", () => {
+  const source =
+    "on: pull_request\njobs:\n  gate:\n    if: github.event.pull_request.draft == false\n    steps:\n      - run: node --version\n  test:\n    needs: gate\n    if: $" +
+    "{{ always() }}\n    steps:\n      - run: npm test\n";
+  assert.equal(
+    check(audit(baseline({ ".github/workflows/ci.yml": source })), "tests")
+      .status,
+    "covered",
+  );
+});
+
+test("distinct Dockerfiles keep distinct findings and generic builds remain conditional", () => {
+  const r = audit(
+    baseline({
+      Dockerfile: null,
+      "services/api/Dockerfile": null,
+      ".github/workflows/ci.yml": workflow("docker build ."),
+    }),
+  );
+  const findings = r.checks.filter((c) => c.check === "container-build");
+  assert.equal(findings.length, 2);
+  assert.equal(new Set(findings.map((c) => c.id)).size, 2);
+  assert(findings.every((c) => c.status === "conditional"));
+});

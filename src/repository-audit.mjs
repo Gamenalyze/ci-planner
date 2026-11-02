@@ -101,7 +101,7 @@ export function auditRepositorySnapshot({ ref, files }) {
       return;
     }
     const complex =
-      /\$(?:\{|[A-Za-z_])|(?:^|[;\n&])\s*false\b|(?:^|[;\n])\s*(?:if|for|while|until|case|function)\b|<<|\x60|\$\(|\|\||\|(?!\|)|(?:^|\s)set\s+\+e\b/.test(
+      /\$(?:\{|[A-Za-z_])|(?:^|[;\n&])\s*false\b|(?:^|[;\n])\s*(?:if|for|while|until|case|function|trap|alias|exec)\b|<<|\x60|\$\(|\|\||\|(?!\|)|(?:^|\s)set\s+\+e\b/.test(
         source,
       );
     for (const raw of source.split(/\n|&&|;|\|(?!\|)/)) {
@@ -123,6 +123,7 @@ export function auditRepositorySnapshot({ ref, files }) {
         }
         continue;
       }
+      if (cmd === "exit" || cmd === "return") return;
       if (
         [
           "echo",
@@ -381,13 +382,38 @@ export function auditRepositorySnapshot({ ref, files }) {
     try {
       const doc = yaml(name);
       if (!doc.jobs || typeof doc.jobs !== "object") throw Error();
+      // Default needs gating inherits restrictions from prerequisites. Explicit
+      // always() can override skipped prerequisites; arbitrary expressions cannot.
+      const conditionCache = new Map(),
+        visiting = new Set();
+      function restricted(id) {
+        if (conditionCache.has(id)) return conditionCache.get(id);
+        if (visiting.has(id) || !Object.hasOwn(doc.jobs, id)) return true;
+        visiting.add(id);
+        const job = doc.jobs[id];
+        let result =
+          conditionalIf(job.if) ||
+          (job["continue-on-error"] !== undefined &&
+            job["continue-on-error"] !== false) ||
+          (typeof job.uses === "string" && !job.uses.startsWith("./"));
+        const needs =
+          typeof job.needs === "string" ? [job.needs] : (job.needs ?? []);
+        const always = ["always()", "$" + "{{always()}}"].includes(
+          String(job.if ?? "").replace(/\s/g, ""),
+        );
+        if (
+          !Array.isArray(needs) ||
+          needs.some((dep) => typeof dep !== "string")
+        )
+          result = true;
+        else if (!always && needs.some(restricted)) result = true;
+        visiting.delete(id);
+        conditionCache.set(id, result);
+        return result;
+      }
       for (const [id, job] of Object.entries(doc.jobs)) {
         const at = { workflow: name, job: id },
-          conditional =
-            weak ||
-            conditionalIf(job.if) ||
-            (job["continue-on-error"] !== undefined &&
-              job["continue-on-error"] !== false),
+          conditional = weak || restricted(id),
           cwd =
             job.defaults?.run?.["working-directory"] ??
             doc.defaults?.run?.["working-directory"] ??
@@ -461,7 +487,11 @@ export function auditRepositorySnapshot({ ref, files }) {
           ? "unverified"
           : "missing";
     checks.push({
-      id: (pkg ?? "repository") + "#" + kind,
+      id:
+        (pkg ?? "repository") +
+        "#" +
+        kind +
+        (kind === "container-build" ? ":" + evidence[0] : ""),
       check: kind,
       package: pkg,
       status,
