@@ -1,4 +1,4 @@
-# CLI reference — 0.1.0
+# CLI reference — 0.2.0
 
 ## Setup
 
@@ -87,3 +87,7 @@ Planning supports at most 20,000 tracked files, 100 workflow definitions, 1,000 
 - **Every job runs:** inspect mode and reasons. Unknown paths, new jobs and incomplete contracts are expected conservative outcomes.
 - **Unsupported YAML or graph:** run existing checks via fallback; simplify the unsupported syntax or contribute a tested parser extension.
 - **No savings value:** this release does not calculate billing or infer avoidable work from timings.
+
+## Audit repository check coverage
+
+Run ci-planner audit-repo --root DIR [--ref HEAD|FULL_SHA]. It prints JSON covering detected checks, invocation locations, uncertainties and recommendations. Exit 0 means a valid report, including reports with missing checks; exit 1 means invalid input or an unreadable/bounded snapshot. Read [the completeness audit guide](repository-audit.md) before acting on findings.

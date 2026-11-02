@@ -10,6 +10,7 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 const documents = [
   "README.md",
   "docs/cli.md",
+  "docs/repository-audit.md",
   "docs/configuration.md",
   "docs/github-actions.md",
   "docs/architecture.md",
@@ -80,6 +81,32 @@ test("Action passes untrusted values through environment and argument arrays", (
   assert(step.env.PLANNER_BASE);
   assert(!step.run.includes("$" + "{{"));
   assert.match(step.run, /"\$\{args\[@\]\}"/);
-  assert.match(action.runs.steps[0].run, /--ignore-scripts/);
+  assert.match(
+    action.runs.steps.find((step) => step.run?.includes("npm ci")).run,
+    /--ignore-scripts/,
+  );
   assert.equal(action.inputs.enforce.default, "false");
+});
+
+test("documented example can skip an unrelated job in enforce mode", () => {
+  const policy = JSON.parse(
+    fs.readFileSync(path.join(root, "examples/policy.json"), "utf8"),
+  );
+  policy.mode = "enforce";
+  const source = fs.readFileSync(
+    path.join(root, "examples/pull-request.yml"),
+    "utf8",
+  );
+  const plan = buildPlan({
+    baseSha: "a".repeat(40),
+    headSha: "b".repeat(40),
+    mergeSha: "c".repeat(40),
+    verifiedMerge: true,
+    enforce: true,
+    workflows: { ".github/workflows/ci.yml": source },
+    policy,
+    changes: [{ status: "M", path: "docs/guide.md" }],
+  });
+  assert.equal(plan.jobs[".github/workflows/ci.yml#test"].run, false);
+  assert.equal(plan.jobs[".github/workflows/ci.yml#plan"].run, true);
 });

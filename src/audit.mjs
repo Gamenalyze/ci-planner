@@ -4,6 +4,7 @@
  * @module audit
  */
 import fs from "node:fs";
+import { validRepository } from "./validation.mjs";
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,7 +12,6 @@ import { fileURLToPath } from "node:url";
 const MAX_RUNS = 20;
 const MAX_JOB_PAGES = 5;
 const MAX_INPUT_BYTES = 32 * 1024 * 1024;
-const REPOSITORY = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const pick = (value, keys) =>
   Object.fromEntries(keys.map((key) => [key, value[key]]));
 const runKeys = [
@@ -76,7 +76,7 @@ export async function collectSnapshot(
   { repository, branch, workflow, limit = MAX_RUNS },
   read = githubRead,
 ) {
-  if (!REPOSITORY.test(repository ?? ""))
+  if (!validRepository(repository))
     throw Error("Expected repository OWNER/REPO");
   if (!positiveInteger(limit) || limit > MAX_RUNS)
     throw Error("Limit must be 1 through 20");
@@ -155,7 +155,7 @@ function interval(job) {
 export function auditSnapshot(snapshot) {
   if (
     snapshot?.schemaVersion !== 1 ||
-    !REPOSITORY.test(snapshot.repository ?? "") ||
+    !validRepository(snapshot.repository) ||
     !Array.isArray(snapshot.runs) ||
     snapshot.runs.length > MAX_RUNS
   ) {

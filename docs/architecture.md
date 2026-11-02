@@ -1,4 +1,4 @@
-# Architecture and API — 0.1.0
+# Architecture and API — 0.2.0
 
 ## Components
 
@@ -26,7 +26,7 @@ The Git adapter verifies full commit identities and reads workflow objects from 
 
 The model rebuilds the graph on every invocation. New workflows and jobs appear automatically and run until an owner scopes them. This is adaptation of generated state, not permission for PR descriptions or an LLM to rewrite safety policy.
 
-A skip needs an unchanged owner-declared complete input set, resolvable local job dependencies and supported execution metadata. New jobs, changed global inputs, unknown paths and uncertainty select fresh work. Selected consumers retain their producers.
+A selected data producer invalidates its downstream consumers. A skip needs an unchanged owner-declared complete input set, resolvable local job dependencies and supported execution metadata. New jobs, changed global inputs, unknown paths and uncertainty select fresh work. Selected consumers retain their producers.
 
 Enforcement needs both caller opt-in and an enforce policy at base, a pull_request event, and a verified merge with exact base/head parents. Otherwise every run boolean is true.
 
@@ -56,7 +56,7 @@ Hashes bind data to the model version but are not signed attestations. This rele
 
 ## Bounds and failure behavior
 
-The implementation bounds file counts, workflows, jobs, source bytes, policy bytes, patterns and audit pages. YAML duplicate keys, aliases and unknown tags refuse planning. Missing/cyclic/dynamic needs refuse planning. The wrapper emits no ready flag on failure, so a correctly integrated workflow runs its existing jobs.
+The implementation bounds file counts, workflows, jobs, source bytes, policy bytes, patterns and audit pages. YAML duplicate keys and unknown tags refuse planning. Bounded aliases keep their workflow fresh while unrelated workflows can still plan. Missing/cyclic/dynamic needs refuse planning. The wrapper emits no ready flag on failure, so a correctly integrated workflow runs its existing jobs.
 
 The tool does not execute repository scripts to discover inputs. That limits inference but keeps analysis separate from PR execution. The composite Action installs its own pinned parser with lifecycle scripts disabled.
 
@@ -64,4 +64,8 @@ The tool does not execute repository scripts to discover inputs. That limits inf
 
 Tests cover timing/attempt errors, pagination, graph discovery, producer retention, unsupported syntax, policy trust, merge parents, dirty checkout isolation and CLI outputs. Fixtures use generic repositories and data.
 
-Future work includes source dependency inference, optimization proposals, richer observations and verified reuse. Those need separate adversarial evidence and must preserve current fallback behavior. No hosted App or automatic workflow rewriting is shipped in 0.1.0.
+Future work includes source dependency inference, optimization proposals, richer observations and verified reuse. Those need separate adversarial evidence and must preserve current fallback behavior. No hosted App or automatic workflow rewriting is shipped in 0.2.0.
+
+## Repository completeness audit
+
+The repository-audit module compares Node/TypeScript signals with traced PR invocations. It follows package scripts, simple shell wrappers, local reusable workflows and composite actions. Reports distinguish covered, conditional, unverified and missing checks and retain evidence locations. See [the full guide](repository-audit.md). This analysis does not change selection policy or add jobs automatically.

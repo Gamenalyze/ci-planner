@@ -1,4 +1,4 @@
-# Input policy reference — 0.1.0
+# Input policy reference — 0.2.0
 
 Place `.ci-planner.json` in the repository being analyzed. The planner reads its committed version from the supplied trusted base. A PR cannot use its own changed policy to enable skips.
 
@@ -48,7 +48,7 @@ Paths are relative to the repository root and use /. Supported syntax:
 | src/**         | All paths below src.                                               |
 | src/**/file.js | That filename at any depth below src, including directly below it. |
 
-There are no negative patterns, braces, character classes, question marks, parent directory paths or backslash separators. A double star must occupy a whole path segment.
+Patterns also match dotfiles (src/* includes src/.env); file matching does not read secret values. There are no negative patterns, braces, character classes, question marks, parent directory paths or backslash separators. A double star must occupy a whole path segment.
 
 ## Mandatory shared inputs
 
@@ -65,6 +65,8 @@ Unknown changed paths retain every job. Deletions, renames represented as deleti
 ## Execution dependencies
 
 If a selected job needs another job, its producers run, recursively. Local action/reusable workflow reference paths are implicit inputs, in addition to declared inputs. Changes under .github already trigger full validation.
+
+Additional shared inputs include Git attributes/submodules, tool versions, Go/Cargo/Python/Ruby manifests/locks and Compose definitions. The initial list was Node-oriented; it is not a complete list for every build system. Add project-specific shared inputs through globals.
 
 The following prevent a job from being skipped:
 
@@ -85,3 +87,11 @@ Other external state may exist. Detection of common hidden inputs is conservativ
 5. Supply the exact tested base/head merge and retain run-all fallback.
 
 Non-PR events, missing opt-in or missing merge proof remain shadow. Use --force and scheduled full validation to exercise the full CI contract. This tool does not bypass coverage, signing, privacy, release or required-check rules.
+
+## Data and control dependencies
+
+Data dependencies propagate in both directions: selected consumers retain producers, and selected producers invalidate consumers, transitively. Shared dependency inputs no longer need to be copied into each downstream contract.
+
+A job may declare controlNeeds as a list of its needs job IDs when those edges provide ordering or planner gating only. This is a reviewed owner assertion: these edges must not provide runtime data, build artifacts or test inputs. No edge is control-only by default. Invalid edge names are rejected. The example test declares controlNeeds: [plan], so the planner can run without forcing unrelated tests. A policy change still retains full validation.
+
+Execution expressions in jobs and inherited env/defaults are checked for hidden contexts. Routing metadata such as concurrency, run-name and on does not make every job opaque; ordinary names containing words such as inputs are harmless. Stale policy job IDs produce warnings and new jobs still run. Duplicate JSON policy keys are rejected.

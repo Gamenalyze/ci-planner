@@ -6,13 +6,31 @@
  */
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { parseDocument } from "yaml";
+import { parseDocument, visit as visitYaml } from "yaml";
+import { validRepository } from "./validation.mjs";
+import { uniqueJSON } from "./json.mjs";
 
-export const VERSION = "0.1.0";
+export const VERSION = "0.2.0";
 const SHA = /^[0-9a-f]{40}$/;
 const WORKFLOW = /^\.github\/workflows\/[^/\x00-\x1f]+\.ya?ml$/;
 const JOB = /^[A-Za-z_][A-Za-z0-9_-]*$/;
 const GLOBAL = [
+  ".gitmodules",
+  ".gitattributes",
+  ".tool-versions",
+  ".node-version",
+  "go.mod",
+  "go.sum",
+  "Cargo.toml",
+  "Cargo.lock",
+  "pyproject.toml",
+  "requirements*.txt",
+  "poetry.lock",
+  "uv.lock",
+  "Gemfile",
+  "Gemfile.lock",
+  "docker-compose*",
+  "compose.y*ml",
   ".github/**",
   ".ci-planner.json",
   "package.json",
@@ -72,6 +90,48 @@ export function patternMatches(pattern, filename) {
   }
   return new RegExp(regex + "$").test(filename);
 }
+
+/** Inspect expressions in execution fields; plain text such as a step name is not an input. */
+function hasHiddenExpression(value) {
+  if (typeof value === "string") {
+    // Find expression terminators outside GitHub single-quoted strings. A literal
+    // containing }} must not hide a later secrets/vars reference in that expression.
+    let cursor = 0;
+    while ((cursor = value.indexOf("$" + "{{", cursor)) !== -1) {
+      let quoted = false,
+        body = "",
+        closed = false;
+      cursor += 3;
+      for (; cursor < value.length; cursor++) {
+        const char = value[cursor];
+        if (char === "'") {
+          if (quoted && value[cursor + 1] === "'") {
+            cursor++;
+            continue;
+          }
+          quoted = !quoted;
+          continue;
+        }
+        if (!quoted && value.slice(cursor, cursor + 2) === "}}") {
+          closed = true;
+          cursor += 2;
+          break;
+        }
+        if (!quoted) body += char;
+      }
+      if (!closed || /\b(?:secrets|vars|inputs|github)\b/.test(body))
+        return true;
+    }
+    return false;
+  }
+  if (Array.isArray(value)) return value.some(hasHiddenExpression);
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    Object.values(value).some(hasHiddenExpression)
+  );
+}
+
 const matches = (patterns, filename) =>
   patterns.some((pattern) => patternMatches(pattern, filename));
 function patterns(value) {
@@ -111,14 +171,26 @@ function readPolicy(value) {
         extra !== undefined ||
         !object(rule) ||
         Object.keys(rule).some(
-          (field) => !["inputs", "inputsComplete"].includes(field),
+          (field) =>
+            !["inputs", "inputsComplete", "controlNeeds"].includes(field),
         ) ||
         typeof rule.inputsComplete !== "boolean"
       )
         throw Error("Invalid job input contract");
       const inputs = patterns(rule.inputs);
       if (!inputs.length) throw Error("A scoped job needs at least one input");
-      return [key, { inputs, inputsComplete: rule.inputsComplete }];
+      const controlNeeds = rule.controlNeeds ?? [];
+      if (
+        !Array.isArray(controlNeeds) ||
+        controlNeeds.length > 100 ||
+        !controlNeeds.every((id) => typeof id === "string" && JOB.test(id)) ||
+        new Set(controlNeeds).size !== controlNeeds.length
+      )
+        throw Error("Invalid control dependencies");
+      return [
+        key,
+        { inputs, inputsComplete: rule.inputsComplete, controlNeeds },
+      ];
     }),
   );
   return {
@@ -132,7 +204,7 @@ function readPolicy(value) {
 
 /**
  * Rebuild all job nodes and local needs edges from committed workflow sources.
- * Aliases, malformed YAML, dynamic needs and dependency cycles refuse planning.
+ * Bounded aliases keep their workflow fresh. Malformed YAML, dynamic needs and cycles refuse planning.
  * Mutable references, hidden inputs and environment-bound jobs stay fresh.
  * @param {Record<string, string>} sources Workflow paths mapped to YAML text.
  * @returns {Map<string, {key:string, workflow:string, id:string, needs:string[], implicitInputs:string[], opaque:boolean}>}
@@ -161,7 +233,13 @@ export function discoverWorkflows(sources) {
     });
     if (document.errors.length || document.warnings.length)
       throw Error("Unsupported or invalid workflow YAML: " + filename);
-    const workflow = document.toJS({ maxAliasCount: 0 });
+    let aliases = false;
+    visitYaml(document, {
+      Alias() {
+        aliases = true;
+      },
+    });
+    const workflow = document.toJS({ maxAliasCount: 100 });
     if (
       !object(workflow) ||
       !object(workflow.jobs) ||
@@ -185,15 +263,25 @@ export function discoverWorkflows(sources) {
           : []),
       ].filter((value) => value !== undefined);
       const implicitInputs = [];
-      const globals = Object.fromEntries(
-        Object.entries(workflow).filter(([key]) => key !== "jobs"),
+      // Routing metadata does not affect execution inputs. Inherited env/defaults do.
+      const execution = Object.fromEntries(
+        Object.entries(job).filter(
+          ([key]) => !["name", "concurrency"].includes(key),
+        ),
       );
+      if (Array.isArray(execution.steps))
+        execution.steps = execution.steps.map((step) =>
+          step && typeof step === "object"
+            ? Object.fromEntries(
+                Object.entries(step).filter(([key]) => key !== "name"),
+              )
+            : step,
+        );
       let opaque =
+        aliases ||
         job.environment !== undefined ||
         job.secrets !== undefined ||
-        /\b(?:secrets|vars|inputs|github)\b/.test(
-          JSON.stringify([globals, job]),
-        );
+        hasHiddenExpression([workflow.env, workflow.defaults, execution]);
       for (const reference of references) {
         if (typeof reference !== "string" || reference.includes("$" + "{{")) {
           opaque = true;
@@ -287,10 +375,7 @@ export function buildPlan({
     (mergeSha !== null && !SHA.test(mergeSha))
   )
     throw Error("Expected full commit SHAs");
-  if (
-    repository !== "local" &&
-    !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)
-  )
+  if (repository !== "local" && !validRepository(repository))
     throw Error("Expected repository OWNER/REPO");
   if (
     !Array.isArray(changes) ||
@@ -360,6 +445,28 @@ export function buildPlan({
       reason: reason ?? "owner-declared-inputs-unchanged",
     });
   }
+  // Data invalidation travels producer -> consumer before retaining producers.
+  // A forced unchanged producer does not needlessly invalidate its siblings.
+  const consumers = new Map([...graph.keys()].map((key) => [key, []]));
+  for (const [key, job] of graph) {
+    const controls = policy.jobs[key]?.controlNeeds ?? [];
+    for (const id of controls)
+      if (!job.needs.includes(job.workflow + "#" + id))
+        throw Error("Control dependency is not a needs edge");
+    for (const upstream of job.needs)
+      if (!controls.includes(graph.get(upstream).id))
+        consumers.get(upstream).push(key);
+  }
+  const queue = [...jobs]
+    .filter(([, job]) => job.candidate === "run")
+    .map(([key]) => key);
+  for (let i = 0; i < queue.length; i++)
+    for (const child of consumers.get(queue[i]))
+      if (jobs.get(child).candidate === "skip") {
+        jobs.get(child).candidate = "run";
+        jobs.get(child).reason = "upstream-job-selected";
+        queue.push(child);
+      }
   // A selected consumer needs its producers, even if a producer's own inputs did not change.
   function retain(key) {
     for (const dependency of graph.get(key).needs) {
@@ -386,6 +493,14 @@ export function buildPlan({
     identity,
     policySource: "base-commit",
     policyHash: digest(policy),
+    warnings: Object.keys(policy.jobs)
+      .filter((key) => !graph.has(key))
+      .map((job) => ({
+        code: "stale-policy-job",
+        job,
+        message:
+          "Policy entry has no discovered job; renamed/new jobs still run.",
+      })),
     planHash: digest({
       version: VERSION,
       identity,
@@ -492,7 +607,7 @@ export function planRepository(options) {
   if (policyTree) {
     if (!/^100644 blob [0-9a-f]{40}\t\.ci-planner\.json$/.test(policyTree))
       throw Error("Policy must be a regular file at the trusted base");
-    policy = JSON.parse(
+    policy = uniqueJSON(
       git(root, ["show", baseSha + ":.ci-planner.json"], 64 * 1024),
     );
   }

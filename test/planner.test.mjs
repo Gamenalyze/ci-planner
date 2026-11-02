@@ -198,9 +198,8 @@ test("local action paths are implicit job inputs and pinned action references ca
   );
 });
 
-test("rejects YAML aliases, duplicate keys, missing/cyclic/dynamic needs and oversized sources", () => {
+test("rejects duplicate keys, missing/cyclic/dynamic needs and oversized sources", () => {
   for (const text of [
-    "jobs:\n  x: &x\n    runs-on: ubuntu-latest\n  y: *x\n",
     "jobs:\n  x: {}\n  x: {}\n",
     "jobs:\n  x:\n    needs: absent\n",
     "jobs:\n  x:\n    needs: y\n  y:\n    needs: x\n",
@@ -417,3 +416,145 @@ test("parallel PR plans keep distinct heads and hashes without shared mutable st
     assert.notEqual(plans[0].planHash, plans[1].planHash);
     assert(plans.every((plan) => plan.mode === "shadow"));
   }));
+
+test("changed producer inputs invalidate direct and transitive consumers", () => {
+  const scoped = policy();
+  scoped.jobs[key("lint")].inputs = ["src/**"];
+  scoped.jobs[key("tests")].inputs = ["test/**"];
+  const direct = buildPlan(
+    options({
+      enforce: true,
+      policy: scoped,
+      changes: [{ status: "M", path: "src/a.js" }],
+    }),
+  );
+  assert.equal(direct.jobs[key("tests")].run, true);
+  assert.equal(direct.jobs[key("tests")].reason, "upstream-job-selected");
+  const chain = source.replace("  docs:\n", "  docs:\n    needs: tests\n");
+  const transitive = buildPlan(
+    options({
+      enforce: true,
+      policy: scoped,
+      workflows: { [workflow]: chain },
+      changes: [{ status: "M", path: "src/a.js" }],
+    }),
+  );
+  assert.equal(transitive.jobs[key("docs")].run, true);
+});
+
+test("routing metadata and ordinary names do not create hidden execution inputs", () => {
+  for (const header of [
+    "concurrency:\n  group: $" + "{{ github.repository }}\n",
+    "run-name: $" + "{{ github.actor }}\n",
+    'on:\n  pull_request:\n    paths-ignore: [".github/**"]\n',
+  ]) {
+    const decorated =
+      header +
+      source
+        .replace("name: CI\non: pull_request\n", "")
+        .replaceAll(
+          "      - run:",
+          "      - name: validate inputs from github\n        run:",
+        );
+    const plan = buildPlan(
+      options({ enforce: true, workflows: { [workflow]: decorated } }),
+    );
+    assert(Object.values(plan.jobs).every((job) => !job.run));
+  }
+  const inherited = "env:\n  KEY: $" + "{{ secrets.KEY }}\n" + source;
+  assert(
+    Object.values(
+      buildPlan(
+        options({ enforce: true, workflows: { [workflow]: inherited } }),
+      ).jobs,
+    ).every((job) => job.run),
+  );
+});
+
+test("git metadata and other toolchain locks cannot be hidden by broad ignored paths", () => {
+  const broad = { ...policy(), ignored: ["**"] };
+  for (const path of [
+    ".gitmodules",
+    ".gitattributes",
+    ".tool-versions",
+    ".node-version",
+    "go.mod",
+    "Cargo.lock",
+    "pyproject.toml",
+    "requirements-dev.txt",
+    "Gemfile.lock",
+    "docker-compose.yml",
+  ])
+    assert(
+      Object.values(
+        buildPlan(
+          options({
+            enforce: true,
+            policy: broad,
+            changes: [{ status: "M", path }],
+          }),
+        ).jobs,
+      ).every((job) => job.run),
+      path,
+    );
+});
+
+test("duplicate JSON policy keys are refused at the Git reader boundary", () =>
+  fixture(({ root, write, commit }) => {
+    write(
+      ".ci-planner.json",
+      '{"schemaVersion":1,"mode":"shadow","mode":"enforce","jobs":{}}',
+    );
+    const baseSha = commit();
+    write("README.md", "changed");
+    const headSha = commit();
+    assert.throws(
+      () => planRepository({ root, baseSha, headSha }),
+      /duplicate|unique/i,
+    );
+  }));
+
+test("an aliased workflow runs fresh without blocking unrelated workflow plans", () => {
+  const alias = ".github/workflows/aliased.yml";
+  const plan = buildPlan(
+    options({
+      enforce: true,
+      workflows: {
+        [workflow]: source,
+        [alias]:
+          "jobs:\n  x: &x\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n  y: *x\n",
+      },
+    }),
+  );
+  assert(!plan.jobs[key("docs")].run);
+  assert(plan.jobs[alias + "#x"].run);
+  assert(plan.jobs[alias + "#y"].run);
+});
+
+test("stale policy entries warn and control-only edges must name actual dependencies", () => {
+  const scoped = policy();
+  scoped.jobs[key("old")] = scoped.jobs[key("docs")];
+  assert.equal(
+    buildPlan(options({ policy: scoped })).warnings[0].code,
+    "stale-policy-job",
+  );
+  scoped.jobs[key("tests")].controlNeeds = ["absent"];
+  assert.throws(
+    () => buildPlan(options({ policy: scoped })),
+    /Control dependency/,
+  );
+});
+
+test("quoted expression terminators cannot hide a secret execution input", () => {
+  const execution = source.replaceAll(
+    "node --version",
+    "echo $" + "{{ format('literal }} marker', secrets.KEY) }}",
+  );
+  assert(
+    Object.values(
+      buildPlan(
+        options({ enforce: true, workflows: { [workflow]: execution } }),
+      ).jobs,
+    ).every((job) => job.run),
+  );
+});

@@ -1,6 +1,15 @@
 #!/usr/bin/env node
 /** CLI boundary: validate arguments, print JSON, and export run booleans only after a valid plan. */
 import fs from "node:fs";
+import {
+  auditRepositorySnapshot,
+  readRepositorySnapshot,
+} from "../src/repository-audit.mjs";
+import {
+  proposeCheckWorkflow,
+  addCheckWorkflow,
+} from "../src/check-proposals.mjs";
+import { execFileSync } from "node:child_process";
 import { main as audit } from "../src/audit.mjs";
 import { planRepository, VERSION } from "../src/planner.mjs";
 
@@ -9,6 +18,7 @@ const help =
   VERSION +
   "\n\n" +
   "ci-planner audit --help\n" +
+  "ci-planner audit-repo [--root DIR] [--ref HEAD|SHA] [--add-checks]\n" +
   "ci-planner plan --base SHA --head SHA [--merge SHA] [--root DIR] [--repository OWNER/REPO]\n" +
   "  [--event pull_request] [--workflow .github/workflows/ci.yml] [--enforce] [--force] [--github-output]\n\n" +
   "Plans read committed Git objects and the policy from base. Default: shadow (all jobs run).\n" +
@@ -18,7 +28,48 @@ try {
   if (command === "--help" || command === undefined) process.stdout.write(help);
   else if (command === "--version") process.stdout.write(VERSION + "\n");
   else if (command === "audit") process.stdout.write(await audit(args));
-  else if (command === "plan") {
+  else if (command === "audit-repo") {
+    const opts = {};
+    for (let i = 0; i < args.length; i++) {
+      const key = args[i];
+      if (
+        !["--root", "--ref", "--add-checks"].includes(key) ||
+        Object.hasOwn(opts, key)
+      )
+        throw Error("Unknown/repeated audit-repo option");
+      if (key === "--add-checks") opts[key] = true;
+      else {
+        const value = args[++i];
+        if (!value || value.startsWith("--"))
+          throw Error("Missing audit-repo value");
+        opts[key] = value;
+      }
+    }
+    const root = opts["--root"] ?? ".",
+      snapshot = readRepositorySnapshot({ root, ref: opts["--ref"] }),
+      report = auditRepositorySnapshot(snapshot);
+    if (opts["--add-checks"]) {
+      const current = execFileSync(
+        "git",
+        ["-c", "core.fsmonitor=false", "rev-parse", "HEAD"],
+        { cwd: root, encoding: "utf8" },
+      ).trim();
+      if (current !== snapshot.ref)
+        throw Error("Adding checks requires the current HEAD snapshot");
+      report.repair = addCheckWorkflow(
+        root,
+        proposeCheckWorkflow(snapshot, report),
+      );
+      report.mode = "repository-audit-with-reviewable-patch";
+      report.limitations = report.limitations.filter(
+        (line) => !line.startsWith("This command edits"),
+      );
+      report.limitations.push(
+        "Only the explicit add-checks option may write one new workflow. It never commits, pushes or starts CI.",
+      );
+    }
+    process.stdout.write(JSON.stringify(report, null, 2) + "\n");
+  } else if (command === "plan") {
     const options = {};
     for (let i = 0; i < args.length; i++) {
       const key = args[i];
