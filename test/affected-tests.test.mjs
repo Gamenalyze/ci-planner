@@ -57,6 +57,8 @@ test("aliases, dynamic imports, runtime files, globals, configuration, missing/d
     { ".mocharc.json": "{}" },
     { "test/setup.js": "" },
     { "vendor/x.test.js": "import {a} from '../src/a.js';" },
+    { "vendor/x.test.ts": "import {a} from '../src/a.js';" },
+    { "vendor/x.spec.tsx": "import {a} from '../src/a.js';" },
     { "vendor/__tests__/x.js": "import {a} from '../../src/a.js';" },
     { "src/a.js": null },
     { "src/a.ts": "export const a:number=1" },

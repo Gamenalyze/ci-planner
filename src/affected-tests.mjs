@@ -6,6 +6,8 @@ import { uniqueJSON } from "./json.mjs";
 const source = /\.(?:[cm]?js|[jt]sx?|[cm]ts)$/;
 const testFile =
   /(?:(?:^|\/|\.)(?:test|spec)\.[cm]?js$|(?:^|\/)__tests__\/.*\.[cm]?js$)/;
+const unscannedTestFile =
+  /(?:(?:^|\/|\.)(?:test|spec)\.[cm]?[jt]sx?$|(?:^|\/)__tests__\/.*\.[cm]?[jt]sx?$)/;
 const vitestFile = /\.(?:test|spec)\.[cm]?js$/;
 const excluded = /(?:^|\/)(?:node_modules|vendor|\.git)\//;
 const configuration =
@@ -48,7 +50,7 @@ export function javascriptGraph({ ref, files }) {
     if (warnings.length < 2000) warnings.push({ file, reason });
   };
   for (const name of Object.keys(files))
-    if (excluded.test(name) && testFile.test(name))
+    if (excluded.test(name) && unscannedTestFile.test(name))
       warn(name, "test-in-unscanned-directory");
   const manifests = names.filter((n) => /(?:^|\/)package\.json$/.test(n));
   let manifest = {};
