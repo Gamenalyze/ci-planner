@@ -839,8 +839,6 @@ export function planRepository(options) {
   const localEntries = entries.filter((entry) =>
     /(?:^|\/)action\.ya?ml$/.test(entry.path),
   );
-  if (localEntries.length > 500)
-    throw Error("Too many local action definitions");
   const localSources = { ...workflows };
   let localBytes = 0;
   for (const entry of localEntries.slice(0, 500)) {

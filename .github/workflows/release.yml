@@ -46,6 +46,7 @@ jobs:
         run: node scripts/release.mjs
 
   publish-npm:
+    environment: npm-release
     needs: publish
     if: >-
       always() &&

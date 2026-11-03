@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { execFileSync } from "node:child_process";
 import { buildPlan, planRepository } from "../src/planner.mjs";
 import { fixture } from "./helpers.mjs";
 const workflow = ".github/workflows/ci.yml",
@@ -233,6 +234,66 @@ test("oversized committed local action metadata retains its job rather than fail
   f.git("checkout", "main");
   f.git("merge", "--no-ff", "pr", "-m", "merge");
   const merge = f.git("rev-parse", "HEAD");
+  assert.equal(
+    planRepository({
+      root: f.root,
+      baseSha: base,
+      headSha: head,
+      mergeSha: merge,
+      enforce: true,
+      event: "pull_request",
+    }).jobs[key].run,
+    true,
+  );
+});
+
+test("unscanned local action entries beyond the 500-definition budget remain opaque without failing the plan", (t) => {
+  const source = yaml().replace(
+    "- run: node --version",
+    "- uses: ./tools/act500",
+  );
+  const f = fixture(t, {
+    [workflow]: source,
+    ".ci-planner.json": JSON.stringify(policy()),
+    "README.md": "before",
+  });
+  const blob = execFileSync("git", ["hash-object", "-w", "--stdin"], {
+    cwd: f.root,
+    input: "../never-followed",
+    encoding: "utf8",
+  }).trim();
+  execFileSync("git", ["update-index", "--index-info"], {
+    cwd: f.root,
+    input: Array.from(
+      { length: 501 },
+      (_, i) =>
+        `120000 ${blob}\ttools/act${String(i).padStart(3, "0")}/action.yml\n`,
+    ).join(""),
+    encoding: "utf8",
+  });
+  const tree = f.git("write-tree");
+  const base = f.git(
+    "commit-tree",
+    tree,
+    "-p",
+    f.sha,
+    "-m",
+    "many action entries",
+  );
+  f.write("README.md", "after");
+  f.git("add", "README.md");
+  const headTree = f.git("write-tree");
+  const head = f.git("commit-tree", headTree, "-p", base, "-m", "docs");
+  const merge = f.git(
+    "commit-tree",
+    headTree,
+    "-p",
+    base,
+    "-p",
+    head,
+    "-m",
+    "merge",
+  );
   assert.equal(
     planRepository({
       root: f.root,
