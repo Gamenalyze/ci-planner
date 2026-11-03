@@ -139,12 +139,14 @@ async function collectContext(env, request = fetch) {
 }
 
 function serializeContext(context) {
+  const stringify = (value, ...args) => JSON.stringify(value, ...args).replace(/[\u0085\u2028\u2029]/g,
+    char => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`);
   function wrap(value) {
-    if (typeof value === 'string' && JSON.stringify(value).length > 1200) {
+    if (typeof value === 'string' && stringify(value).length > 1200) {
       const chunks = [];
       let chunk = '', length = 0;
       for (const char of value) {
-        const size = JSON.stringify(char).length - 2;
+        const size = stringify(char).length - 2;
         if (length + size > 1000) { chunks.push(chunk); chunk = ''; length = 0; }
         chunk += char; length += size;
       }
@@ -155,7 +157,7 @@ function serializeContext(context) {
     if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, wrap(item)]));
     return value;
   }
-  const content = JSON.stringify(wrap(context), null, 2) + '\n';
+  const content = stringify(wrap(context), null, 2) + '\n';
   if (Buffer.byteLength(content) > 512000) throw new Error('Formatted review context exceeds 512 KB.');
   return content;
 }

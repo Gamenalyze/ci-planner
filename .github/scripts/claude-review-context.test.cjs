@@ -152,3 +152,18 @@ test('large text is losslessly chunked below Read per-line truncation limits', (
   assert.ok(formatted.split('\n').every(line => line.length < 1500));
   assert.throws(() => serializeContext({ body: 'x'.repeat(600000) }), /exceeds 512 KB/);
 });
+
+test('Unicode line separators preserve complete read coverage and line bounds', () => {
+  const body = 'A\u2028B\u2029C\u0085D'.repeat(1000);
+  const packet = serializeContext({ body });
+  assert.doesNotMatch(packet, /[\u0085\u2028\u2029]/);
+  assert.equal(JSON.parse(packet).body.chunks.join(''), body);
+  assert.ok(packet.split('\n').every(line => line.length < 1500));
+  const file = '/packet.json';
+  const output = packet.trimEnd().split('\n').map((line, index) => `${index + 1}→${line}`).join('\n');
+  const transcript = [
+    { type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Read', id: 'unicode-read', input: { file_path: file } }] } },
+    { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'unicode-read', content: output }] } },
+  ];
+  assert.equal(hasContextRead(transcript, file, packet), true);
+});
