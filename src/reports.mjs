@@ -205,6 +205,43 @@ function timingView(report) {
     "",
     "Observed worker-minutes: " + (report.totals.workerSeconds / 60).toFixed(1),
     "Complete runs: " + report.totals.completeRuns + " / " + runs.length,
+    ...(Number.isFinite(report.totals.cancelledWorkerSeconds)
+      ? [
+          "Cancelled runs consumed **" +
+            (report.totals.cancelledWorkerSeconds / 60).toFixed(1) +
+            " worker-minutes (" +
+            (!Number.isFinite(report.totals.cancelledWorkerShare) ||
+            report.totals.cancelledWorkerShare < 0 ||
+            report.totals.cancelledWorkerShare > 1
+              ? "unknown share"
+              : (report.totals.cancelledWorkerShare * 100).toFixed(1) +
+                "% of observed time") +
+            ")**.",
+          markdownCell(report.cancellation?.recommendation),
+          table(
+            ["Conclusion", "Runs", "Worker-minutes"],
+            Object.entries(report.totals.byConclusion ?? {}).map(
+              ([conclusion, total]) => [
+                conclusion,
+                total.runs,
+                Number.isFinite(total.workerSeconds)
+                  ? (total.workerSeconds / 60).toFixed(1)
+                  : "Unknown",
+              ],
+            ),
+          ),
+          report.totals.estimatedCost?.amount !== null &&
+          Number.isFinite(report.totals.estimatedCost?.amount)
+            ? "Estimated cost at owner rates: " +
+              markdownCell(report.totals.estimatedCost.currency) +
+              " " +
+              report.totals.estimatedCost.amount.toFixed(2) +
+              (report.totals.estimatedCost.partial
+                ? " (partial; unrated or missing time excluded)."
+                : ".")
+            : "Estimated cost: unknown; supply runner rates to estimate it.",
+        ]
+      : []),
     "",
     table(
       ["Run", "Result", "Worker-minutes", "Observation"],
@@ -350,6 +387,39 @@ function evidenceView(report) {
         markdownCell(report.completeRuns) +
         " / " +
         markdownCell(report.observedRuns),
+      "",
+      table(
+        [
+          "Workflow / job",
+          "Samples",
+          "Median min",
+          "p90 min",
+          "Shard ratio",
+          "Install min",
+          "Est. worker-min/PR",
+        ],
+        list(report.jobSummaries ?? [], 10000).map((j) => [
+          j.workflow + " / " + j.job,
+          j.samples,
+          Number.isFinite(j.medianSeconds)
+            ? (j.medianSeconds / 60).toFixed(1)
+            : "Unknown",
+          Number.isFinite(j.p90Seconds)
+            ? (j.p90Seconds / 60).toFixed(1)
+            : "Unknown",
+          Number.isFinite(j.medianShardImbalanceRatio)
+            ? j.medianShardImbalanceRatio.toFixed(2)
+            : "Unknown",
+          Number.isFinite(j.repeatedInstallSeconds)
+            ? (j.repeatedInstallSeconds / 60).toFixed(1)
+            : "Unknown",
+          Number.isFinite(j.estimatedWorkerSecondsPerPR)
+            ? (j.estimatedWorkerSecondsPerPR / 60).toFixed(1)
+            : "Unknown",
+        ]),
+      ),
+      "",
+      "Per-PR estimates use complete successful PR samples only; medians and p90 include all timed samples. Install time is observed setup, not avoidable waste.",
       "",
       table(
         ["Observation", "Jobs", "Review"],

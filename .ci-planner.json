@@ -1,13 +1,7 @@
 {
   "schemaVersion": 1,
   "mode": "shadow",
-  "ignored": [
-    "README.md",
-    "CHANGELOG.md",
-    "CONTRIBUTING.md",
-    "SECURITY.md",
-    "LICENSE"
-  ],
+  "ignored": [],
   "jobs": {
     ".github/workflows/ci.yml#validate": {
       "inputsComplete": true,
@@ -18,7 +12,12 @@
         "docs/**",
         "examples/**",
         "action.yml",
-        "policy.schema.json"
+        "policy.schema.json",
+        "README.md",
+        "CHANGELOG.md",
+        "CONTRIBUTING.md",
+        "SECURITY.md",
+        "LICENSE"
       ]
     }
   }

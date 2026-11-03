@@ -936,3 +936,31 @@ test("reuse outputs require the trusted pre-push tip and a matching unforced Git
     assert.match(observed.output, /^run=true\n/);
   }
 });
+
+test("attestation refuses a forged two-parent merge even when its second parent is the successful run head", async (t) => {
+  const ctx = await reuseFixture(t);
+  // This satisfies the former second-parent check while substituting an arbitrary tree.
+  ctx.f.write("src/main.ts", "export const forged = true;");
+  ctx.f.git("add", ".");
+  const tree = ctx.f.git("write-tree");
+  const forged = ctx.f.git(
+    "commit-tree",
+    tree,
+    "-p",
+    ctx.target,
+    "-p",
+    ctx.source,
+    "-m",
+    "forged merge",
+  );
+  const previous = process.env.GITHUB_EVENT_NAME;
+  delete process.env.GITHUB_EVENT_NAME;
+  try {
+    await assert.rejects(
+      attestValidation({ ...ctx.signOptions, testedSha: forged }, ctx.read),
+      /must equal the successful run head/,
+    );
+  } finally {
+    if (previous !== undefined) process.env.GITHUB_EVENT_NAME = previous;
+  }
+});

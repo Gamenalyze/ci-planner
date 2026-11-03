@@ -1,0 +1,34 @@
+# Review this Node-source example before adoption. It never starts native app builds.
+name: Early metadata gate example
+on: pull_request
+permissions:
+  contents: read
+jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: "24"
+      # npm ci fails on package/lock disagreement; package lifecycle scripts stay off.
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run lint --if-present
+      # Add your repository's explicit SBOM drift check here if it has one.
+  test:
+    needs: metadata
+    if: ${{ !cancelled() && needs.metadata.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: "24"
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm test

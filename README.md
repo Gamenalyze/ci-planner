@@ -1,8 +1,8 @@
 # CI Planner
 
-Free CI audits and conservative pull request plans for GitHub Actions. Version 0.3.1.
+Free CI waste and missing-check audits for GitHub Actions, with a conservative planner. Version 0.4.0.
 
-CI Planner helps you see where CI time goes and decide which jobs a PR needs. It rebuilds its job graph from committed workflows on each plan. It runs locally or on your runners. No account, model API key, paid tier or hosted service is required.
+Start with zero-config, read-only audits: see the share of worker time spent in cancelled runs, median and p90 job durations, and missing PR checks. Then evaluate conservative job selection in shadow mode. It rebuilds its job graph from committed workflows on each plan. It runs locally or on your runners. No account, model API key, paid tier or hosted service is required.
 
 **Upgrade before enforcing skips:** v0.3.0 and earlier can miss changed submodule inputs under Git ignore settings. Keep enforce disabled until using the reviewed v0.3.1 fix. See [security details](SECURITY.md).
 
@@ -28,7 +28,7 @@ Unknown inputs, structural changes, shared runtime/control changes, new jobs, hi
 
 ## Install
 
-For GitHub Actions, use the full reviewed commit SHA from the v0.3.1 release with the [complete workflow example](examples/pull-request.yml). A tag is a convenient version label but remains mutable; the planner intentionally treats it as uncertain execution input. Start in shadow mode and keep the run-all fallback. For production, pin the Action to the reviewed release commit SHA. The Action runs on your runner; it needs no CI Planner account, API key or hosted service.
+For GitHub Actions, use the full reviewed commit SHA from the v0.4.0 release with the [complete workflow example](examples/pull-request.yml). Tags remain mutable. An owner may explicitly allow a publisher and record a base-owned expected Action SHA; unresolved, unpinned or moved tags retain the job. Start in shadow mode and keep the run-all fallback. For production, pin the Action to the reviewed release commit SHA. The Action runs on your runner; it needs no CI Planner account, API key or hosted service.
 
 Requires Node.js 22 or newer and Git. Live audits also need an installed, authenticated [GitHub CLI](https://cli.github.com/). CI tests Node.js 22 and 24; the Action preserves an existing Node.js 22+ runtime and installs Node.js 24 only when needed.
 
@@ -40,7 +40,13 @@ node bin/ci-planner.mjs --help
 npm test
 ```
 
-After installing the package locally, its executable is named `ci-planner`. The package is not yet published to npm; the clone commands above work now.
+After installing the package locally, its executable is named `ci-planner`. Stable releases also attach an installable npm tarball and SHA-256 checksum. For a one-command audit without cloning, use:
+
+```sh
+npx --yes --package=https://github.com/Gamenalyze/ci-planner/releases/download/v0.4.0/gamenalyze-ci-planner-0.4.0.tgz ci-planner audit --repository OWNER/REPO --format markdown
+```
+
+The npm organization is configured; the first registry publication and trusted-publisher verification are release gates. After verified publication, use `npx @gamenalyze/ci-planner audit --repository OWNER/REPO --format markdown`. See [publishing](docs/publishing.md) for automatic GitHub, Marketplace and npm publication.
 
 ## Audit CI
 
@@ -57,7 +63,7 @@ node bin/ci-planner.mjs audit --repository OWNER/REPO --snapshot > snapshot.json
 node bin/ci-planner.mjs audit --input snapshot.json
 ```
 
-The collector reads run/job metadata using GET requests. It does not fetch logs, artifacts, source code or secret values. The audit sums observed worker time, which differs from elapsed workflow time and billed minutes. Findings are review prompts; savings and billing values remain null.
+The collector reads run/job metadata using GET requests. It does not fetch logs, artifacts, source code or secret values. The audit sums observed worker time, which differs from elapsed workflow time and billed minutes. The report sums worker time by run conclusion and shows the cancelled share. Cancellation cause stays unknown until investigated; a superseded-push pattern may justify a 30–60 second debounce or cheap first gate. Savings and billing values remain null. Optional owner-supplied runner rates produce clearly labeled, coverage-aware cost estimates.
 
 ## Plan a PR
 

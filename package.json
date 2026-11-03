@@ -1,7 +1,7 @@
 {
   "name": "@gamenalyze/ci-planner",
-  "version": "0.3.1",
-  "description": "Free CI audits and conservative pull request plans for GitHub Actions",
+  "version": "0.4.0",
+  "description": "Free CI waste and missing-check audits for GitHub Actions, with a conservative planner",
   "type": "module",
   "license": "MIT",
   "engines": {
@@ -38,7 +38,7 @@
   ],
   "scripts": {
     "test": "node --test test/*.test.mjs",
-    "check": "node --check bin/ci-planner.mjs && node --check src/planner.mjs && node --check src/audit.mjs && node --check src/repository-audit.mjs && node --check src/json.mjs && node --check src/validation.mjs && node --check src/check-proposals.mjs && node --check src/reports.mjs && node --check src/setup.mjs && node --check src/fix-pr.mjs && node --check src/evidence.mjs && node --check src/dependencies.mjs && node --check src/skip-validation.mjs && node --check src/reuse.mjs && node --check src/performance.mjs"
+    "check": "node scripts/check-syntax.mjs"
   },
   "dependencies": {
     "yaml": "2.9.1"
@@ -49,5 +49,8 @@
   },
   "bugs": {
     "url": "https://github.com/Gamenalyze/ci-planner/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

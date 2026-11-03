@@ -61,3 +61,15 @@ Set enforce to 'false', change the target branch policy to shadow, or remove job
 ## Optional full-run feedback and reuse
 
 Set validation-input only to owner-controlled validation feedback. Missing or unsafe feedback forces full validation. It cannot enable enforcement. Signed PR-to-main reuse is a separate explicit CLI integration with a trusted coordinator, owner runtime contract and a run-fresh fallback. The normal Action still runs all jobs on push. See [evidence and performance](evidence-and-performance.md). Never give a signing key to PR execution.
+
+## Producers must succeed before consumers run
+
+The planner fallback is for planner availability. Consumers also need their data producers to succeed. For example, a test job with `needs: [plan, build]` should use:
+
+```yaml
+if: >-
+  always() && !cancelled() && needs.build.result == 'success' &&
+  (needs.plan.outputs.ready != 'true' || fromJSON(needs.plan.outputs.run).test != false)
+```
+
+Apply the producer success check to each required data producer. A failed or skipped producer must not turn into a successful consumer merely because the planner fell back. See [the early gate example](../examples/early-metadata-gate.yml) for a simple fail-fast sequence.

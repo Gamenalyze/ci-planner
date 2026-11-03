@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0 — 2026-11-03
+
+- Close the remaining audit safety gaps: reject output-carrying controlNeeds, scan common shell event/network inputs and committed nested composite actions, retain nested shared manifests/configuration, and require attestation of the exact successful run head.
+- Permit explicit routing expressions and literal matrix values, while retaining PR text, secrets, external env, dynamic contexts, and runner-dependent inputs. Filter plans to workflows that declare the current event.
+- Resolve allowlisted Action publishers through GitHub and bind resolved SHAs to plan identity. Require a base-owned expected actionPins entry; a moved tag or unavailable resolution always retains the job.
+- Cache compiled glob patterns across comparisons and correct the project's own input policy to cover docs tests, package contents and secret scans.
+- Surface cancelled worker time, share and totals by conclusion, with cause left unknown. Add optional owner runner cost rates and expose incomplete pricing coverage.
+- Aggregate per-job median, nearest-rank p90, shard ratios, install time and estimates from complete successful PR samples; combine repeated review prompts across runs.
+- Propose actual source/script scopes and documentation ignores in init, leaving every completeness assertion false and mode shadow.
+- Automatically create versioned GitHub releases with npm tarballs/checksums after both Node lanes pass on main, with an optional npm OIDC job that verifies identical tarball and registry bytes. Verify the exact source and public Marketplace latest version; publication failures remain visible and version tags never move.
+- Lead with waste and missing-check audits. The first npm registry publication/trust bootstrap, live merged-PR replay, affected-test selection and broader language audits remain follow-up work.
+
 ## 0.3.1 — 2026-11-03
 
 - Force Git to include submodule gitlink changes regardless of ignore settings in committed or dirty .gitmodules and local .git/config. A hidden gitlink change could otherwise bypass enforce-mode input selection in v0.3.0 and earlier.

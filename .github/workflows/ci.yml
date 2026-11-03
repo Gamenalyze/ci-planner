@@ -37,7 +37,7 @@ jobs:
           echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $tools_dir/gitleaks.tgz" | sha256sum --check --strict
           tar -xzf "$tools_dir/gitleaks.tgz" -C "$tools_dir" gitleaks
           echo "$tools_dir" >> "$GITHUB_PATH"
-      - run: actionlint .github/workflows/ci.yml examples/pull-request.yml
+      - run: actionlint .github/workflows/*.yml examples/*.yml
       - run: gitleaks dir . --redact --no-banner
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: node --version

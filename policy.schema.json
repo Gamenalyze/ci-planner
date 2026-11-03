@@ -5,13 +5,20 @@
   "description": "Owner-reviewed inputs loaded from the trusted base commit.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "mode", "jobs"],
+  "required": [
+    "schemaVersion",
+    "mode",
+    "jobs"
+  ],
   "properties": {
     "schemaVersion": {
       "const": 1
     },
     "mode": {
-      "enum": ["shadow", "enforce"],
+      "enum": [
+        "shadow",
+        "enforce"
+      ],
       "description": "Shadow runs every job. Enforcement also needs caller opt-in and exact tested merge."
     },
     "globals": {
@@ -29,7 +36,10 @@
         "^\\.github/workflows/[^/#\\s]+\\.ya?ml#[A-Za-z_][A-Za-z0-9_-]*$": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["inputs", "inputsComplete"],
+          "required": [
+            "inputs",
+            "inputsComplete"
+          ],
           "properties": {
             "inputsComplete": {
               "type": "boolean",
@@ -58,6 +68,24 @@
           }
         }
       }
+    },
+    "allowActionPublishers": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}$"
+      },
+      "description": "Reviewed publishers whose mutable Action refs may be resolved through GitHub; resolution failure keeps jobs fresh."
+    },
+    "actionPins": {
+      "type": "object",
+      "maxProperties": 200,
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{40}$"
+      },
+      "description": "Base-owned expected commit for each allowlisted mutable Action ref; moved or missing pins keep the job fresh."
     }
   },
   "$defs": {
