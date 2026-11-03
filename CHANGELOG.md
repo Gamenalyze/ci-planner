@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1 — 2026-11-03
+
+- Point the shipped GitHub Actions example to an available release version instead of the unpublished v0.3.1 label.
+- Replace the obsolete manual Marketplace release checklist with the verified automatic GitHub/Marketplace/npm workflow, environment and trusted-publisher requirements, and immutable-tag recovery steps.
+- Make the npm quickstart directly usable and align package, engine and release examples for this documentation patch.
+
 ## 0.4.0 — 2026-11-03
 
 - Close the remaining audit safety gaps: reject output-carrying controlNeeds, scan common shell event/network inputs and committed nested composite actions, retain nested shared manifests/configuration, and require attestation of the exact successful run head.
