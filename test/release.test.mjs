@@ -153,3 +153,46 @@ test("a matching version tag can also be retried while it is still main", () => 
     true,
   );
 });
+
+import vm from "node:vm";
+import { parseDocument } from "yaml";
+test("npm privileged job rejects fork and PR workflow-run sources before any checkout", () => {
+  const workflow = parseDocument(
+    fs.readFileSync(
+      new URL("../.github/workflows/release.yml", import.meta.url),
+      "utf8",
+    ),
+  ).toJS();
+  const expression = workflow.jobs["publish-npm"].if;
+  const check = (
+    event,
+    result = "success",
+    repository = "Gamenalyze/ci-planner",
+  ) =>
+    vm.runInNewContext(expression, {
+      always: () => true,
+      vars: { NPM_PUBLISH_ENABLED: "true" },
+      needs: { publish: { result } },
+      github: {
+        repository,
+        event_name: "workflow_run",
+        event: { workflow_run: event },
+      },
+    });
+  const canonical = {
+    conclusion: "success",
+    event: "push",
+    head_repository: { full_name: "Gamenalyze/ci-planner" },
+  };
+  assert.equal(check(canonical), true);
+  assert.equal(check(canonical, "failure"), true);
+  assert.equal(check(canonical, "skipped"), false);
+  assert.equal(check(canonical, "cancelled"), false);
+  assert.equal(check({ ...canonical, event: "pull_request" }), false);
+  assert.equal(
+    check({ ...canonical, head_repository: { full_name: "attacker/fork" } }),
+    false,
+  );
+  assert.equal(check({ ...canonical, conclusion: "failure" }), false);
+  assert.equal(check(canonical, "success", "attacker/fork"), false);
+});

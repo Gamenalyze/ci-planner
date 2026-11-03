@@ -47,7 +47,15 @@ jobs:
 
   publish-npm:
     needs: publish
-    if: always() && vars.NPM_PUBLISH_ENABLED == 'true' && needs.publish.result != 'cancelled'
+    if: >-
+      always() &&
+      vars.NPM_PUBLISH_ENABLED == 'true' &&
+      (needs.publish.result == 'success' || needs.publish.result == 'failure') &&
+      github.repository == 'Gamenalyze/ci-planner' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_repository.full_name == github.repository))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
