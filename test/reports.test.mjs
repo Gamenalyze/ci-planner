@@ -215,6 +215,8 @@ test("CLI presentation failures cannot publish ready outputs; summary IO failure
   const args = [
     cli,
     "plan",
+    "--event",
+    "pull_request",
     "--root",
     f.root,
     "--base",
@@ -232,14 +234,32 @@ test("CLI presentation failures cannot publish ready outputs; summary IO failure
   });
   assert.equal(missing.status, 1);
   assert.equal(fs.readFileSync(output, "utf8"), "");
-  const unavailable = spawnSync(process.execPath, args, {
+  for (const callerEvent of ["push", "pull_request"]) {
+    fs.writeFileSync(output, "");
+    const unavailable = spawnSync(process.execPath, args, {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        GITHUB_EVENT_NAME: callerEvent,
+        GITHUB_OUTPUT: output,
+        GITHUB_STEP_SUMMARY: f.root,
+      },
+    });
+    assert.equal(unavailable.status, 0);
+    assert.match(unavailable.stderr, /summary unavailable/);
+    assert.equal(JSON.parse(unavailable.stdout).mode, "shadow");
+    assert.match(fs.readFileSync(output, "utf8"), /ready=true/);
+  }
+  fs.writeFileSync(output, "");
+  const nonPrArgs = [...args];
+  nonPrArgs[nonPrArgs.indexOf("--event") + 1] = "push";
+  const absent = spawnSync(process.execPath, nonPrArgs, {
     encoding: "utf8",
     env: { ...process.env, GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: f.root },
   });
-  assert.equal(unavailable.status, 0);
-  assert.match(unavailable.stderr, /summary unavailable/);
-  assert.equal(JSON.parse(unavailable.stdout).mode, "shadow");
-  assert.match(fs.readFileSync(output, "utf8"), /ready=true/);
+  assert.equal(absent.status, 1);
+  assert.match(absent.stderr, /Requested workflow is absent/);
+  assert.equal(fs.readFileSync(output, "utf8"), "");
   for (const bad of [
     ["--format", "html"],
     ["--format", "json", "--format", "markdown"],
