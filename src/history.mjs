@@ -193,9 +193,19 @@ function fullInvocation(step, job, doc) {
         (env === null || typeof env !== "object" || Array.isArray(env) || Object.keys(env).length),
     )
   ) return false;
-  const literal = step.run.replace(/['"]/g, "");
-  if (/\$|\\(?:\r?\n)/.test(step.run) || /^\s*[A-Za-z_]\w*=/.test(literal) ||
-      /(?:^|\s)(?:--(?:if-present|help|version|dry-run|listTests|list|showConfig|collect-only|co|passWithNoTests|only\S*|related|changed\S*|findRelatedTests|config|prefix|cwd|dir|workspace\S*|filter|\S*(?:skip|ignore|exclude|pattern)\S*)|-[hvtgkC])(?:=|\s|$)/i.test(literal)) return false;
+  // The contract names owner-reviewed steps, not arbitrary shell/argument semantics.
+  // Extra arguments, wrappers and custom command forms cannot prove a full attempt.
+  const command = step.run.trim();
+  if (![
+    /^(?:npm|pnpm|yarn|bun) (?:test|run [A-Za-z0-9][\w:-]*)$/,
+    /^(?:npx )?(?:jest|mocha|ava|tap|pytest)$/,
+    /^(?:npx )?vitest run$/,
+    /^(?:python|python3) -m pytest$/,
+    /^go (?:test|vet|build) \.\/\.\.\.$/,
+    /^node --test$/,
+    /^node (?:\.\/)?(?:[A-Za-z0-9_-][\w.-]*\/)*[A-Za-z0-9_-][\w.-]*\.(?:js|mjs|cjs)$/,
+    /^npm audit(?: --audit-level=(?:low|moderate|high|critical))?$/,
+  ].some((pattern) => pattern.test(command))) return false;
   const shell =
     step.shell ?? job.defaults?.run?.shell ?? doc.defaults?.run?.shell;
   if (shell !== undefined && !["bash", "sh"].includes(shell)) return false;

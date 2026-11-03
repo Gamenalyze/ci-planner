@@ -234,6 +234,12 @@ test("required invocation evidence rejects masked shell failures and custom shel
     'npm test "$FLAGS"',
     "CI_SKIP_TESTS=true npm test",
     ": npm test",
+    "mocha --grep unit",
+    "jest -o",
+    "vitest run --project core",
+    "jest --shard=1/2",
+    "npm test test/only-one.test.js",
+    "npm test -- --runInBand",
   ]) {
     const changed = source.replace(
       "      - run: npm test",
@@ -265,6 +271,10 @@ test("required invocation evidence rejects masked shell failures and custom shel
         cmd.split("\n").map((line) => "          " + line).join("\n"),
     );
     assert(inspectFullWorkflow(changed, contract).includes("required-invocation-unverified:tests"), cmd);
+  }
+  for (const cmd of ["npm run validate", "node --test", "npx vitest run", "go test ./..."]) {
+    const full = source.replace("      - run: npm test", "      - name: Run npm test\n        run: " + JSON.stringify(cmd));
+    assert.deepEqual(inspectFullWorkflow(full, contract), [], cmd);
   }
   const custom = source.replace(
     "      - run: npm test",
