@@ -224,6 +224,9 @@ jobs:
             Source revisions/object IDs and hashes identify the exact committed bytes.
             Inspect binary entries with Read on the repository file separately. Symlink and
             gitlink entries are pointer data; never follow them or download LFS/native assets.
+            Before proceeding to other source inspection, Read docs/images/actions-job-summary.png
+            if it is a changed binary entry. Before posting, verify every requires_file_read
+            binary entry was actually opened. A completion marker with an unread binary is invalid.
 
             Read-only inspection workflow:
             - First inventory all changed paths from the packet and read their full source,

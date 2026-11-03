@@ -139,6 +139,7 @@ export function unquotedShell(source) {
       continue;
     }
     if (ch === "\\") {
+      if (frame.quote === null) return null;
       i++;
       continue;
     }
@@ -193,8 +194,9 @@ function fullInvocation(step, job, doc) {
   return (
     plain !== null &&
     plain.trim() !== "" &&
-    !/[|;&]/.test(plain) &&
-    !/(?:^|\n)\s*(?:set\s+\+e|if|for|while|until|case|trap|eval|exec|source|exit|bash|sh|zsh|pwsh|function)\b/.test(
+    plain.split("\n").filter((line) => line.trim()).length === 1 &&
+    !/[|;&!(){}$<>]/.test(plain) &&
+    !/^\s*(?:set|if|for|while|until|case|trap|eval|exec|source|exit|bash|sh|zsh|pwsh|function)\b/.test(
       plain,
     ) &&
     !/^\s*(?:echo|printf|true|:)\b/.test(plain)

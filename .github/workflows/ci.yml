@@ -57,9 +57,10 @@ jobs:
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: node --version
       - run: npm run check
+      - run: npm audit --audit-level=high
+      - run: npm audit --prefix examples/affected-tests-consumer --package-lock-only --audit-level=high
       - run: npm test
       - run: npm run consumer:smoke
-      - run: npm audit --audit-level=high
       - name: Exercise the shipped Action against this repository
         uses: ./
         id: self-plan

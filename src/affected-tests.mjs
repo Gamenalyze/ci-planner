@@ -47,6 +47,9 @@ export function javascriptGraph({ ref, files }) {
   const warn = (file, reason) => {
     if (warnings.length < 2000) warnings.push({ file, reason });
   };
+  for (const name of Object.keys(files))
+    if (excluded.test(name) && testFile.test(name))
+      warn(name, "test-in-unscanned-directory");
   const manifests = names.filter((n) => /(?:^|\/)package\.json$/.test(n));
   let manifest = {};
   if (manifests.length !== 1 || manifests[0] !== "package.json")
