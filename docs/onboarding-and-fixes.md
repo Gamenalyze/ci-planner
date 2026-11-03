@@ -1,4 +1,4 @@
-# Guided setup and draft fix PRs — 0.3.0
+# Guided setup and draft fix PRs — 0.5.1
 
 These commands make adoption and supported repairs reviewable. They do not infer complete source dependencies, enable enforcement automatically, replace CI, or compile native apps on hosted runners.
 
@@ -11,9 +11,15 @@ Run from an installed package, or substitute node bin/ci-planner.mjs when using 
 The preview reads committed Git objects and discovers the existing workflow/job graph. It proposes:
 
 1. A .ci-planner.json policy when the repository has none. Its mode is shadow, every job has inputsComplete: false, and broad inputs require owner review.
-2. A new .github/workflows/ci-planner.yml advisory PR workflow. It checks out the source, runs CI Planner without write permissions, and shows a plan plus completeness audit in the job summary.
+2. A new .github/workflows/ci-planner.yml advisory workflow for pull requests, pushes to main and manual dispatch. It checks out the tested revision with LFS/submodules off and credentials not persisted, runs CI Planner without write permissions, and shows a plan plus completeness audit in the job summary.
 
 The new workflow has continue-on-error enabled. It neither replaces existing checks nor adds skip conditions to them. It can produce useful missing-check evidence before the owner completes input contracts. Optimization suggestions remain conservative until those contracts are reviewed.
+
+The Action targets the generated report workflow itself. Choosing the first existing workflow can fail when that workflow excludes the triggering event. The exported run map covers the report job; it is not a complete application-job contract. The repository audit still inspects the existing workflow inventory.
+
+PR runs use the event's base/head and tested merge. Push runs use before/head; manual runs, invalid before values and zero before values fall back to the checkout's first parent or HEAD for a root commit. A syntactically valid before object that was not fetched is left unchanged: planning can fail advisorially, and no history or skip authority is invented. Cancellation groups include event, PR/ref and commit, so a manual report cannot cancel a push report at the same commit.
+
+The metadata-only revision step executes Git reads, and the verification step uses Node built-ins. Neither installs dependencies nor executes repository scripts or native builds. Verification requires ready=true, mode=shadow, the report job present and true, and a nonempty boolean run map with every value true. Arrays, malformed/empty output and false/string values fail the step. The advisory job can still appear green after a failed step; inspect both the planner and verification step conclusions on PR and main runs. A successful job alone does not prove usable output.
 
 An existing policy is preserved byte-for-byte, including any existing mode and owner assertions. The new advisory Action invocation explicitly requests shadow mode. Existing workflows, runner labels and release gates are not edited.
 
@@ -26,7 +32,9 @@ Writing requires a clean checkout at the repository root. Commit or stash existi
 
 The default generated Action ref matches the engine's version. Before that version is released, or to pin production use, supply --action-ref with a reviewed full commit SHA. A complete vMAJOR.MINOR.PATCH tag is also accepted. Mutable branch names and floating major tags are refused by this generator.
 
-Review the advisory runner label. Add the files through your normal PR process. When ready to evaluate job selection, use the [configuration reference](configuration.md) and [integration contract](github-actions.md) to define complete inputs and add run-all fallback conditions to existing jobs. A head policy cannot enable its own skips.
+Review the advisory runner label. Add the files through your normal PR process. Inspect repository-specific guards that enumerate workflow files, restrict triggers or validate concurrency. Update exact inventories to include the report while preserving their assertions; do not remove checks or weaken completeness to admit it. Verify actual planner/output steps before merge and again on main; a manual run provides a separate event sample.
+
+When ready to evaluate job selection, use the [configuration reference](configuration.md) and [integration contract](github-actions.md) to define complete inputs and add run-all fallback conditions to existing jobs. A head policy cannot enable its own skips.
 
 ## Preview supported repairs
 

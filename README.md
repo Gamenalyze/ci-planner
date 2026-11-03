@@ -1,6 +1,6 @@
 # CI Planner
 
-Free CI waste and missing-check audits for GitHub Actions, with a conservative planner. Version 0.5.0.
+Free CI waste and missing-check audits for GitHub Actions, with a conservative planner. Version 0.5.1.
 
 Start with zero-config, read-only audits: see the share of worker time spent in cancelled runs, median and p90 job durations, and missing PR checks. Then evaluate conservative job selection in shadow mode. It rebuilds its job graph from committed workflows on each plan. It runs locally or on your runners. No account, model API key, paid tier or hosted service is required.
 
@@ -34,7 +34,7 @@ Unknown inputs, structural changes, shared runtime/control changes, new jobs, hi
 
 ## Install
 
-For GitHub Actions, use the full reviewed commit SHA from the v0.4.1 release with the [complete workflow example](examples/pull-request.yml). Tags remain mutable. An owner may explicitly allow a publisher and record a base-owned expected Action SHA; unresolved, unpinned or moved tags retain the job. Start in shadow mode and keep the run-all fallback. For production, pin the Action to the reviewed release commit SHA. The Action runs on your runner; it needs no CI Planner account, API key or hosted service.
+For GitHub Actions, use a full reviewed commit SHA from the [release you adopt](https://github.com/Gamenalyze/ci-planner/releases) with the [complete workflow example](examples/pull-request.yml). Tags remain mutable. An owner may explicitly allow a publisher and record a base-owned expected Action SHA; unresolved, unpinned or moved tags retain the job. Start in shadow mode and keep the run-all fallback. The Action runs on your runner; it needs no CI Planner account, API key or hosted service.
 
 Requires Node.js 22 or newer and Git. Live audits also need an installed, authenticated [GitHub CLI](https://cli.github.com/). CI tests Node.js 22 and 24; the Action preserves an existing Node.js 22+ runtime and installs Node.js 24 only when needed.
 
@@ -49,10 +49,10 @@ npm test
 After installing the package locally, its executable is named `ci-planner`. Stable releases also attach an installable npm tarball and SHA-256 checksum. For a one-command audit without cloning, use:
 
 ```sh
-npx --yes --package=https://github.com/Gamenalyze/ci-planner/releases/download/v0.4.1/gamenalyze-ci-planner-0.4.1.tgz ci-planner audit --repository OWNER/REPO --format markdown
+npx --yes @gamenalyze/ci-planner audit --repository OWNER/REPO --format markdown
 ```
 
-The npm package can also be installed with `npx @gamenalyze/ci-planner audit --repository OWNER/REPO --format markdown`. See [publishing](docs/publishing.md) for automatic GitHub, Marketplace and npm publication.
+Use an explicit package version when a reproducible CLI version is required. See [publishing](docs/publishing.md) for automatic GitHub, Marketplace and npm publication and verified release tarballs.
 
 ## Audit CI
 
@@ -61,7 +61,7 @@ For guided adoption, start with these offline previews:
     node bin/ci-planner.mjs init --root /path/to/source --format markdown
     node bin/ci-planner.mjs fix --root /path/to/source --format markdown
 
-Setup creates files only with --write; existing policies and workflows are preserved. New input contracts are incomplete and shadow-only until owner review. To open a supported fix as a draft PR, run fix --repository OWNER/REPO --open-pr from a trusted local checkout matching the remote default branch. That explicit operation may start normal repository CI. See [guided setup and fix PRs](docs/onboarding-and-fixes.md).
+Setup creates files only with --write; existing policies and workflows are preserved. Its report handles PR, main-push and manual events with separate cancellation groups and an output-verification step. New input contracts are incomplete and shadow-only until owner review. Inspect workflow-inventory guards and actual step outcomes when adopting it. To open a supported fix as a draft PR, run fix --repository OWNER/REPO --open-pr from a trusted local checkout matching the remote default branch. That explicit operation may start normal repository CI. See [guided setup and fix PRs](docs/onboarding-and-fixes.md).
 
 ```sh
 node bin/ci-planner.mjs audit --repository OWNER/REPO --workflow ci.yml --limit 20

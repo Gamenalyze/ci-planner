@@ -34,8 +34,9 @@ test("setup preview discovers jobs, never enables skips, executes no source and 
   ).toJS();
   assert.equal(generated.permissions.contents, "read");
   assert.equal(generated.jobs.report["continue-on-error"], true);
-  assert.equal(generated.jobs.report.steps[1].with.enforce, "false");
-  assert.equal(generated.jobs.report.steps[1].with.workflow, workflow);
+  const action = generated.jobs.report.steps.find((step) => step.id === "plan");
+  assert.equal(action.with.enforce, "false");
+  assert.equal(action.with.workflow, ".github/workflows/ci-planner.yml");
   assert.equal(f.git("status", "--porcelain"), "");
   assert(!JSON.stringify(preview).includes("PRIVATE_FIXTURE_CONTENT"));
   assert(!fs.existsSync(path.join(f.root, "SHOULD_NOT_EXIST")));
@@ -90,9 +91,8 @@ test("repos without workflows get an advisory report workflow, including native 
   const result = initializeRepository({ root: f.root });
   const file = result.files.find((file) => file.path.endsWith(".yml"));
   const job = parseDocument(file.content).toJS().jobs.report;
-  assert.equal(job.steps.length, 2);
-  assert(job.steps.every((step) => !step.run));
-  assert.equal(job.steps[1].with.workflow, ".github/workflows/ci-planner.yml");
+  assert.equal(job.steps.filter((step) => step.uses).length, 2);
+  assert.equal(job.steps.find((step) => step.id === "plan").with.workflow, ".github/workflows/ci-planner.yml");
   assert(!file.content.includes("eas build"));
   assert(!file.content.includes("gameci"));
 });

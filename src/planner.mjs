@@ -14,7 +14,7 @@ import { validRepository, SHA, ACTION_SHA, WORKFLOW } from "./validation.mjs";
 import { uniqueJSON } from "./json.mjs";
 import { githubRead } from "./audit.mjs";
 
-export const VERSION = "0.5.0";
+export const VERSION = "0.5.1";
 const JOB = /^[A-Za-z_][A-Za-z0-9_-]*$/;
 const GLOBAL = [
   ".gitmodules",
