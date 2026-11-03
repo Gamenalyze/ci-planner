@@ -638,6 +638,8 @@ test("failed or absent feedback forces all plan jobs without weakening owner enf
     "--enforce",
     "--workflow",
     workflow,
+    "--event",
+    "pull_request",
   ];
   const normal = JSON.parse(
     execFileSync(process.execPath, args, { encoding: "utf8" }),
