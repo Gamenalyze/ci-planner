@@ -6,14 +6,22 @@ import { uniqueJSON } from "./json.mjs";
 export function suggestJobInputs(snapshot, graph, fallback) {
   const names = Object.keys(snapshot.files),
     result = {};
-  const imports = javascriptGraph(snapshot);
+  let imports,
+    unavailable = false;
+  try {
+    imports = javascriptGraph(snapshot);
+  } catch {
+    imports = { edges: new Map(), tests: [], warnings: [] };
+    unavailable = true;
+  }
   for (const [key, job] of graph) {
-    const inputs = new Set([job.workflow]),
-      reasons = [];
+    const inputs = new Set(),
+      reasons = unavailable ? ["unavailable-import-graph"] : [];
     const add = (name) => {
       if (name && !/[\\\x00-\x20?\[\]{}!]/.test(name)) inputs.add(name);
       else reasons.push("unrepresentable-path");
     };
+    add(job.workflow);
     const visit = (name) => {
       const pending = [name],
         seen = new Set();

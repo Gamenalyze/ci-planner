@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { selectAffectedTests } from "../src/affected-tests.mjs";
+import { proposeSetup } from "../src/setup.mjs";
 import { suggestJobInputs } from "../src/input-scopes.mjs";
 import { discoverWorkflows } from "../src/planner.mjs";
 const ref = "a".repeat(40);
@@ -130,4 +131,28 @@ test("default Jest test.js/spec.js files are included without widening Vitest's 
     }).tests,
     ["test/a.test.js"],
   );
+});
+
+test("setup preserves broad incomplete scopes when import inventory paths or aggregate bytes are unsupported", () => {
+  const workflow = ".github/workflows/ci.yml";
+  const base = {
+    ...files(),
+    [workflow]:
+      "on: pull_request\njobs:\n  unit:\n    steps:\n      - run: npm test\n",
+  };
+  const large = { ...base };
+  for (let i = 0; i < 65; i++)
+    large["generated/f" + i + ".js"] = " ".repeat(256 * 1024);
+  for (const content of [{ ...base, "docs/a\\b.md": null }, large]) {
+    const preview = proposeSetup({ ref, files: content });
+    const scopes = Object.values(preview.scopeProposal.jobs);
+    assert(
+      scopes.every(
+        (s) =>
+          s.basis === "inventory-fallback" &&
+          s.warnings.includes("unavailable-import-graph"),
+      ),
+    );
+    assert(scopes.every((s) => s.inputsComplete === false));
+  }
 });

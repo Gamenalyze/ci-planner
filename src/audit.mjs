@@ -5,7 +5,12 @@
  */
 import fs from "node:fs";
 import { readJSONFile } from "./evidence.mjs";
-import { validRepository, SHA, WORKFLOW_FILE, parseOptions } from "./validation.mjs";
+import {
+  validRepository,
+  SHA,
+  WORKFLOW_FILE,
+  parseOptions,
+} from "./validation.mjs";
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -96,7 +101,10 @@ export async function collectSnapshot(
   const query = new URLSearchParams({ per_page: String(limit) });
   if (branch) query.set("branch", branch);
   const listed = await read(
-    scope + (workflow ? "workflows/" + workflow + "/" : "") + "runs?" + query,
+    scope +
+      (workflow ? "workflows/" + encodeURIComponent(workflow) + "/" : "") +
+      "runs?" +
+      query,
   );
   if (
     !Array.isArray(listed.workflow_runs) ||
@@ -446,7 +454,11 @@ const HELP =
 /** Parse audit arguments and return stdout text; writes no files or CI settings. */
 export async function main(args) {
   if (args.length === 1 && args[0] === "--help") return HELP;
-  const options = parseOptions(args, ["--repository", "--workflow", "--branch", "--limit", "--input", "--rates"], ["--snapshot"]);
+  const options = parseOptions(
+    args,
+    ["--repository", "--workflow", "--branch", "--limit", "--input", "--rates"],
+    ["--snapshot"],
+  );
   let snapshot;
   if (options["--input"]) {
     if (

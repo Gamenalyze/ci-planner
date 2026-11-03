@@ -2,8 +2,8 @@
 // Git object IDs may use SHA-1 or SHA-256. GitHub Action pins remain SHA-1.
 export const SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 export const ACTION_SHA = /^[0-9a-f]{40}$/;
-export const WORKFLOW = /^\.github\/workflows\/[^/\\\x00-\x20\x7f]+\.ya?ml$/;
-export const WORKFLOW_FILE = /^[A-Za-z0-9_-][A-Za-z0-9_.-]*\.ya?ml$/;
+export const WORKFLOW = /^\.github\/workflows\/[^/\\\x00-\x1f\x7f]+\.ya?ml$/;
+export const WORKFLOW_FILE = /^[^/\\\x00-\x1f\x7f]+\.ya?ml$/;
 
 /** Explicit valued/boolean options, with no duplicates or implicit values. */
 export function parseOptions(args, values, booleans = []) {
