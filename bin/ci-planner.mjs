@@ -81,7 +81,7 @@ try {
   }
   if (presentation.summary && !process.env.GITHUB_STEP_SUMMARY)
     throw Error("--summary requires GITHUB_STEP_SUMMARY");
-  const emit = (result) => {
+  const emit = async (result) => {
     const markdown =
       presentation.summary || presentation.format === "markdown"
         ? renderMarkdown(result)
@@ -95,11 +95,19 @@ try {
         );
       }
     }
-    process.stdout.write(
-      presentation.format === "markdown"
-        ? markdown
-        : JSON.stringify(result, null, 2) + "\n",
-    );
+    const content = presentation.format === "markdown"
+      ? markdown : JSON.stringify(result, null, 2) + "\n";
+    await new Promise((resolve, reject) => {
+      const fail = (error) => reject(error);
+      process.stdout.once("error", fail);
+      process.stdout.write(content, (error) => {
+        if (error) reject(error);
+        else {
+          process.stdout.off("error", fail);
+          resolve();
+        }
+      });
+    });
   };
   if (command === "--help" || command === undefined) process.stdout.write(help);
   else if (command === "--version") process.stdout.write(VERSION + "\n");
@@ -109,7 +117,7 @@ try {
       ["--root", "--repository", "--contract", "--limit"],
       ["--fetch"],
     );
-    emit(
+    await emit(
       await replayHistory({
         root: opts["--root"] ?? ".",
         repository: opts["--repository"],
@@ -143,6 +151,7 @@ try {
     const result = selectAffectedTests(snapshot, changes, {
       runner: opts["--runner"] ?? "vitest",
     });
+    await emit(result);
     if (opts["--github-output"]) {
       if (!process.env.GITHUB_OUTPUT)
         throw Error("GitHub output needs GITHUB_OUTPUT");
@@ -155,11 +164,10 @@ try {
           "\nready=true\n",
       );
     }
-    emit(result);
   } else if (command === "validate") {
     const opts = parseOptions(args, ["--input"], ["--check"]);
     const report = validateSkipDecisions(readJSONFile(opts["--input"]));
-    emit(report);
+    await emit(report);
     if (opts["--check"] && !report.safe) process.exitCode = 1;
   } else if (command === "discover") {
     const opts = parseOptions(args, ["--root", "--ref", "--base"]);
@@ -181,7 +189,7 @@ try {
         .split("\0")
         .filter(Boolean);
     }
-    emit(discoverDependencies(snapshot, changes));
+    await emit(discoverDependencies(snapshot, changes));
   } else if (command === "advise") {
     const opts = parseOptions(args, [
       "--input",
@@ -192,7 +200,7 @@ try {
     ]);
     if (opts["--input"] && Object.keys(opts).length !== 1)
       throw Error("Offline advice cannot use live options");
-    emit(
+    await emit(
       advisePerformance(
         opts["--input"]
           ? readJSONFile(opts["--input"], 32 * 1024 * 1024)
@@ -218,7 +226,7 @@ try {
       ],
       ["--full-run"],
     );
-    emit(
+    await emit(
       await attestValidation({
         root: opts["--root"] ?? ".",
         repository: opts["--repository"],
@@ -283,7 +291,7 @@ try {
       environmentHash: opts["--environment"],
       receipt,
     });
-    emit(result);
+    await emit(result);
     if (opts["--github-output"])
       fs.appendFileSync(
         process.env.GITHUB_OUTPUT,
@@ -296,7 +304,7 @@ try {
   } else if (command === "audit") {
     const result = await audit(args);
     if (args.length === 1 && args[0] === "--help") process.stdout.write(result);
-    else emit(uniqueJSON(result));
+    else await emit(uniqueJSON(result));
   } else if (command === "report") {
     const opts = parseOptions(args, ["--input"]);
     if (!opts["--input"]) throw Error("Expected --input report.json");
@@ -312,10 +320,10 @@ try {
       throw Error("Invalid report JSON; object keys must be unique");
     }
     renderMarkdown(result); // Validate even when JSON output was requested.
-    emit(result);
+    await emit(result);
   } else if (command === "init") {
     const opts = parseOptions(args, ["--root", "--action-ref"], ["--write"]);
-    emit(
+    await emit(
       initializeRepository({
         root: opts["--root"] ?? ".",
         actionRef: opts["--action-ref"],
@@ -324,7 +332,7 @@ try {
     );
   } else if (command === "fix") {
     const opts = parseOptions(args, ["--root", "--repository"], ["--open-pr"]);
-    emit(
+    await emit(
       opts["--open-pr"]
         ? await openFixPullRequest({
             root: opts["--root"] ?? ".",
@@ -357,7 +365,7 @@ try {
         "Only the explicit add-checks option may write one new workflow. It never commits, pushes or starts CI.",
       );
     }
-    emit(report);
+    await emit(report);
   } else if (command === "plan") {
     const options = parseOptions(
       args,
@@ -434,7 +442,7 @@ try {
           "Repository audit unavailable; plan decisions are unchanged.";
       }
     }
-    emit(plan);
+    await emit(plan);
     if (options["--github-output"]) {
       const run = Object.fromEntries(jobs.map((job) => [job.id, job.run]));
       fs.appendFileSync(

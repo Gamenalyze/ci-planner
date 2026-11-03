@@ -377,3 +377,21 @@ test("optional repository summaries use committed inputs and cannot change a pla
   assert(Object.values(invalid.jobs).every((job) => job.run));
   assert(!JSON.stringify(invalid).includes("DIRTY_SECRET"));
 });
+
+test("affected CLI publishes a conservative matrix only after successful report output", (t) => {
+  const f = fixture(t, { "package.json": '{"type":"module"}', "src/a.js": "export const a=1;", "test/a.test.js": "import {a} from '../src/a.js'; test('a',()=>a);" });
+  const base = f.sha; f.write("src/a.js", "export const a=2;"); f.commit();
+  const output = path.join(f.root, "outputs"); fs.writeFileSync(output, "");
+  const args = [cli, "affected", "--root", f.root, "--base", base, "--github-output"];
+  const result = spawnSync(process.execPath, args, { encoding: "utf8", env: { ...process.env, GITHUB_OUTPUT: output } });
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout).tests, ["test/a.test.js"]);
+  assert.match(fs.readFileSync(output, "utf8"), /ready=true/);
+  fs.writeFileSync(output, "");
+  const readOnly = fs.openSync(path.join(f.root, "package.json"), "r");
+  try {
+    const failed = spawnSync(process.execPath, args, { stdio: ["ignore", readOnly, "pipe"], encoding: "utf8", env: { ...process.env, GITHUB_OUTPUT: output } });
+    assert.equal(failed.status, 1);
+    assert.equal(fs.readFileSync(output, "utf8"), "");
+  } finally { fs.closeSync(readOnly); }
+});

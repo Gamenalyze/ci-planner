@@ -593,6 +593,8 @@ export async function replayHistory(
             mergeSha: testedSha,
             event: "pull_request",
             enforce: false,
+            // Current tag identity is not historical evidence and must not bypass replay budgets.
+            readAction() { throw Error("Live Action resolution is unavailable in historical replay"); },
           });
           item.testedSha = testedSha;
           item.verified = item.issues.length === 0;
@@ -705,6 +707,7 @@ export async function replayHistory(
       "Advisory bounded historical observations only. No history or zero observed failures grants enforcement authority.",
       "Required step names and matrix names are an explicit owner-reviewed contract. Logs verify a pinned checkout's commit, not test quality or absence of subsequent arbitrary repository-code effects.",
       "Savings are candidate successful-job worker time, not billed savings. Missing logs, retired commits, gates and partial attempts remain unknown.",
+      "Mutable Action references are not resolved against current tag state; their jobs remain fresh.",
       "Last-N merge ordering is complete only when the bounded closed-PR inventory is exhausted.",
     ],
   };

@@ -1,5 +1,7 @@
 import test from "node:test";
 import fs from "node:fs";
+import path from "node:path";
+import { execFileSync } from "node:child_process";
 import assert from "node:assert/strict";
 import {
   replayHistory,
@@ -7,7 +9,7 @@ import {
   inspectFullWorkflow,
   unquotedShell,
 } from "../src/history.mjs";
-import { fixture } from "./helpers.mjs";
+import { fixture, cli } from "./helpers.mjs";
 import { renderMarkdown } from "../src/reports.mjs";
 const workflow = ".github/workflows/ci.yml",
   pin = "a".repeat(40);
@@ -76,10 +78,13 @@ test("bounded historical replay separates known success, failed suggested skips 
     "src/main.js": "export const x=1;",
     "README.md": "before",
     [workflow]: source + "      - run: node check.js\n",
+    ".github/workflows/other.yml": "on: pull_request\njobs:\n  other:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: publisher/demo@v1\n",
+
     ".ci-planner.json": JSON.stringify({
       schemaVersion: 1,
       mode: "shadow",
       ignored: ["README.md"],
+      allowActionPublishers: ["publisher"],
       jobs: {
         [workflow + "#tests"]: {
           inputsComplete: true,
@@ -95,6 +100,14 @@ test("bounded historical replay separates known success, failed suggested skips 
   f.git("checkout", "main");
   f.git("merge", "--no-ff", "feature", "-m", "merge");
   const merge = f.git("rev-parse", "HEAD");
+  const transport = path.join(f.root, "transport");
+  fs.mkdirSync(transport);
+  const sentinel = path.join(transport, "unexpected-live-read");
+  fs.writeFileSync(path.join(transport, "gh"), "#!/usr/bin/env node\nrequire('node:fs').writeFileSync(process.env.HISTORY_NETWORK_SENTINEL, 'called'); process.exit(1);\n", { mode: 0o755 });
+  const oldPath = process.env.PATH, oldSentinel = process.env.HISTORY_NETWORK_SENTINEL;
+  process.env.PATH = transport + path.delimiter + oldPath;
+  process.env.HISTORY_NETWORK_SENTINEL = sentinel;
+  t.after(() => { process.env.PATH = oldPath; if (oldSentinel === undefined) delete process.env.HISTORY_NETWORK_SENTINEL; else process.env.HISTORY_NETWORK_SENTINEL = oldSentinel; });
   let variant = "success";
   const meta = {
     id: 10,
@@ -224,6 +237,7 @@ test("bounded historical replay separates known success, failed suggested skips 
     assert.equal(report.summary.unknownAttempts, 1);
     assert.equal(report.summary.candidateWorkerSeconds, 0);
   }
+  assert.equal(fs.existsSync(sentinel), false, "replay must not consult live Action tag metadata");
 });
 
 test("required invocation evidence rejects masked shell failures and custom shells while respecting quoted program text", () => {
@@ -299,4 +313,16 @@ test("required invocation evidence rejects masked shell failures and custom shel
   assert(!unquotedShell("node -e 'const x=1; console.log(x);'").includes(";"));
   assert(unquotedShell('npm test "$(false; true)"').includes(";"));
   assert.equal(unquotedShell("npm test 'unterminated"), null);
+});
+
+test("history CLI reads an explicit contract through a bounded offline transport", (t) => {
+  const f = fixture(t);
+  const transport = path.join(f.root, "transport"); fs.mkdirSync(transport);
+  fs.writeFileSync(path.join(transport, "gh"), "#!/usr/bin/env node\nprocess.stdout.write('[]');\n", { mode: 0o755 });
+  const contractPath = path.join(f.root, "history-contract.json");
+  fs.writeFileSync(contractPath, JSON.stringify(contract));
+  const report = JSON.parse(execFileSync(process.execPath, [cli, "history", "--root", f.root, "--repository", "owner/repo", "--contract", contractPath, "--limit", "1"], { encoding: "utf8", env: { ...process.env, PATH: transport + path.delimiter + process.env.PATH } }));
+  assert.equal(report.mode, "historical-replay");
+  assert.equal(report.selection.complete, true);
+  assert.equal(report.summary.attempts, 0);
 });
