@@ -224,6 +224,16 @@ test("required invocation evidence rejects masked shell failures and custom shel
     "npm test || true",
     "! npm test",
     "s\\et +o errexit",
+    "npm test --if-present",
+    "npm test -- --help",
+    "npm test --dry-run",
+    "npm test '--listTests'",
+    "npm test --'if-pres''ent'",
+    "npm test -- --test-skip-pattern=.",
+    "npm test --prefix other-package",
+    'npm test "$FLAGS"',
+    "CI_SKIP_TESTS=true npm test",
+    ": npm test",
   ]) {
     const changed = source.replace(
       "      - run: npm test",
@@ -235,6 +245,13 @@ test("required invocation evidence rejects masked shell failures and custom shel
       ),
       cmd,
     );
+  }
+  for (const extra of [
+    "        working-directory: other-package\n",
+    "        env: { SKIP_TESTS: true }\n",
+  ]) {
+    const changed = source.replace("      - run: npm test", "      - name: Run npm test\n" + extra + "        run: npm test");
+    assert(inspectFullWorkflow(changed, contract).includes("required-invocation-unverified:tests"));
   }
   for (const cmd of [
     "set +o errexit\nnpm test\ntrue",

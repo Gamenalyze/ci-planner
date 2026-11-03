@@ -209,9 +209,17 @@ jobs:
             CONTEXT FILE: ${{ steps.source_context.outputs.file }}
             CONTEXT SHA-256: ${{ steps.source_context.outputs.sha256 }}
             CONTEXT LINES: ${{ steps.source_context.outputs.lines }}
+            CURRENT_PACKET_RECEIPT: Context packet SHA-256: ${{ steps.source_context.outputs.sha256 }}
+
+            The CURRENT_PACKET_RECEIPT above is for THIS run. Earlier comments inside the
+            packet contain stale digests, even when they reviewed the same Git commit.
+            Never copy a digest from an earlier comment or from immutable source text.
+            Copy the exact CURRENT_PACKET_RECEIPT value into your final comment.
 
             Your first tool call must use Read with file_path exactly equal to CONTEXT FILE
-            and limit 200. Continue with offsets and bounded limits until every line is read.
+            and limit 200. Every subsequent packet Read must also have limit at most 200.
+            Continue from the last line ACTUALLY RETURNED, not from the requested limit;
+            a truncated result does not cover the requested range. Read until every line is returned.
             Read every line of the packet (continue with offsets if Read truncates it).
             Long source strings use ordered text_chunks; join their chunks in order. It contains
             PR intent, linked work/acceptance criteria, conversation, reviews and inline
@@ -286,6 +294,8 @@ jobs:
             Include "### Context reviewed" listing the requirements, source docs and prior
             discussion actually inspected, followed by this exact receipt on its own line:
             Context packet SHA-256: ${{ steps.source_context.outputs.sha256 }}
+            Before posting, compare that line byte-for-byte with CURRENT_PACKET_RECEIPT
+            at the top of this prompt. A checksum copied from a prior review is invalid.
             Include "### Requirements checked" mapping material acceptance criteria to code
             and evidence, findings (or explicitly no findings identified), and
             "### Verification and gaps" distinguishing source traces, observed CI checks,

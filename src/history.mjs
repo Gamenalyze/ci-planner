@@ -182,6 +182,20 @@ export function unquotedShell(source) {
 /** Named invocations remain an owner-reviewed contract; opaque shells/operators cannot prove a full run. */
 function fullInvocation(step, job, doc) {
   if (typeof step.run !== "string") return false;
+  const cwd =
+    step["working-directory"] ??
+    job.defaults?.run?.["working-directory"] ??
+    doc.defaults?.run?.["working-directory"];
+  if (cwd !== undefined && cwd !== ".") return false;
+  if (
+    [doc.env, job.env, step.env].some(
+      (env) => env !== undefined &&
+        (env === null || typeof env !== "object" || Array.isArray(env) || Object.keys(env).length),
+    )
+  ) return false;
+  const literal = step.run.replace(/['"]/g, "");
+  if (/\$|\\(?:\r?\n)/.test(step.run) || /^\s*[A-Za-z_]\w*=/.test(literal) ||
+      /(?:^|\s)(?:--(?:if-present|help|version|dry-run|listTests|list|showConfig|collect-only|co|passWithNoTests|only\S*|related|changed\S*|findRelatedTests|config|prefix|cwd|dir|workspace\S*|filter|\S*(?:skip|ignore|exclude|pattern)\S*)|-[hvtgkC])(?:=|\s|$)/i.test(literal)) return false;
   const shell =
     step.shell ?? job.defaults?.run?.shell ?? doc.defaults?.run?.shell;
   if (shell !== undefined && !["bash", "sh"].includes(shell)) return false;
@@ -196,10 +210,10 @@ function fullInvocation(step, job, doc) {
     plain.trim() !== "" &&
     plain.split("\n").filter((line) => line.trim()).length === 1 &&
     !/[|;&!(){}$<>]/.test(plain) &&
-    !/^\s*(?:set|if|for|while|until|case|trap|eval|exec|source|exit|bash|sh|zsh|pwsh|function)\b/.test(
+    !/^\s*(?:set|if|for|while|until|case|trap|eval|exec|source|exit|env|bash|sh|zsh|pwsh|function)\b/.test(
       plain,
     ) &&
-    !/^\s*(?:echo|printf|true|:)\b/.test(plain)
+    !/^\s*(?:(?:echo|printf|true)\b|:(?:\s|$))/.test(plain)
   );
 }
 /** Static full-run checks are independent of PR-supplied reports and never infer missing matrix names. */
