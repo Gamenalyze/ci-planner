@@ -167,3 +167,35 @@ test('Unicode line separators preserve complete read coverage and line bounds', 
   ];
   assert.equal(hasContextRead(transcript, file, packet), true);
 });
+
+function selectTools(baseFiles, headFiles) {
+  const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
+  const candidates = ['claude-pr-review.yml', 'ci.yml'].map(name => path.join(__dirname, '../workflows', name));
+  const workflow = fs.readFileSync(candidates.find(file => fs.existsSync(file)), 'utf8');
+  const step = workflow.split('      - name: Select versioned review tooling\n')[1]?.split('\n      - name: ')[0];
+  assert.ok(step, 'workflow must select base tooling before accessing head helper files');
+  const code = step.split("          node <<'NODE'\n")[1].split('          NODE')[0].replace(/^          /gm, '');
+  const existing = new Set([...baseFiles.map(file => `/base/${file}`), ...headFiles.map(file => `/head/${file}`)]);
+  let output = '';
+  vm.runInNewContext(code, {
+    require: name => name === 'node:fs' ? { existsSync: file => existing.has(file), appendFileSync: (_, text) => { output += text; } } : require(name),
+    process: { env: { BASE_TOOLS: '/base', HEAD_TOOLS: '/head', GITHUB_OUTPUT: '/output' } },
+    console: { log() {} },
+  });
+  return output;
+}
+const toolFiles = ['claude-review-context.cjs', 'claude-review-context.test.cjs'];
+
+test('older PR heads without helper files use complete base tooling', () => {
+  assert.equal(selectTools(toolFiles, []), 'directory=/base\nsource=base\n');
+});
+test('proposed head tooling cannot override an existing base verifier', () => {
+  assert.equal(selectTools(toolFiles, toolFiles), 'directory=/base\nsource=base\n');
+});
+test('the first rollout explicitly bootstraps when the base has no tooling', () => {
+  assert.equal(selectTools([], toolFiles), 'directory=/head\nsource=head_bootstrap\n');
+});
+test('partial base tooling or missing tooling fails visibly', () => {
+  assert.throws(() => selectTools(toolFiles.slice(0, 1), toolFiles), /incomplete/);
+  assert.throws(() => selectTools([], []), /incomplete/);
+});

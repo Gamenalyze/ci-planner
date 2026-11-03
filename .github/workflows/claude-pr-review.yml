@@ -80,8 +80,59 @@ jobs:
           main().catch(error => { console.error(`::error::${error.message}`); process.exitCode = 1; });
           NODE
 
-      - name: Test the review context collector
-        run: node --test .github/scripts/claude-review-context.test.cjs
+      - name: Check out base review tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: .claude-review-tools-base
+          fetch-depth: 1
+          lfs: false
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            .github/scripts/claude-review-context.cjs
+            .github/scripts/claude-review-context.test.cjs
+            .github/workflows/claude-pr-review.yml
+            .github/workflows/ci.yml
+
+      - name: Select versioned review tooling
+        id: review_tools
+        env:
+          BASE_TOOLS: ${{ github.workspace }}/.claude-review-tools-base/.github/scripts
+          HEAD_TOOLS: ${{ github.workspace }}/.github/scripts
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const files = ['claude-review-context.cjs', 'claude-review-context.test.cjs'];
+          const present = directory => files.filter(file => fs.existsSync(path.join(directory, file))).length;
+          const baseCount = present(process.env.BASE_TOOLS);
+          let directory, source;
+          if (baseCount === files.length) {
+            directory = process.env.BASE_TOOLS;
+            source = 'base';
+          } else if (baseCount === 0 && present(process.env.HEAD_TOOLS) === files.length) {
+            // Initial rollout only: the base does not contain this infrastructure yet.
+            directory = process.env.HEAD_TOOLS;
+            source = 'head_bootstrap';
+          } else {
+            throw new Error('Review tooling is incomplete in base and cannot be bootstrapped from this head.');
+          }
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `directory=${directory}\nsource=${source}\n`);
+          console.log(`Review tooling source: ${source}`);
+          NODE
+
+      - name: Test the versioned review context collector
+        env:
+          REVIEW_TOOLS: ${{ steps.review_tools.outputs.directory }}
+        run: node --test "$REVIEW_TOOLS/claude-review-context.test.cjs"
+
+      - name: Test proposed review tooling changes
+        if: steps.review_tools.outputs.source == 'base'
+        run: |
+          if [ -f .github/scripts/claude-review-context.test.cjs ]; then
+            node --test .github/scripts/claude-review-context.test.cjs
+          fi
 
       - name: Collect pull request intent and review context
         id: review_context
@@ -89,7 +140,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: node .github/scripts/claude-review-context.cjs
+          REVIEW_TOOLS: ${{ steps.review_tools.outputs.directory }}
+        run: node "$REVIEW_TOOLS/claude-review-context.cjs"
 
       - name: Review the pull request with Claude
         id: claude
@@ -214,6 +266,7 @@ jobs:
           EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
           CONTEXT_FILE: ${{ steps.review_context.outputs.file }}
           CONTEXT_SHA256: ${{ steps.review_context.outputs.sha256 }}
+          REVIEW_TOOLS: ${{ steps.review_tools.outputs.directory }}
         run: |
           node <<'NODE'
           const fs = require('node:fs');
@@ -221,7 +274,7 @@ jobs:
             const { GH_TOKEN, REPO, PR_NUMBER, HEAD_SHA, REVIEW_STARTED_AT, REVIEW_RUN, GITHUB_API_URL } = process.env;
             const output = JSON.parse(fs.readFileSync(process.env.EXECUTION_FILE, 'utf8'));
             const messages = Array.isArray(output) ? output : [output];
-            const { hasContextRead } = require('./.github/scripts/claude-review-context.cjs');
+            const { hasContextRead } = require(require('node:path').join(process.env.REVIEW_TOOLS, 'claude-review-context.cjs'));
             const packet = fs.readFileSync(process.env.CONTEXT_FILE, 'utf8');
             const digest = require('node:crypto').createHash('sha256').update(packet).digest('hex');
             if (digest !== process.env.CONTEXT_SHA256 || !hasContextRead(messages, process.env.CONTEXT_FILE, packet))
