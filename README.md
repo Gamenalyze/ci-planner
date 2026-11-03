@@ -1,6 +1,6 @@
 # CI Planner
 
-Free CI waste and missing-check audits for GitHub Actions, with a conservative planner. Version 0.4.2.
+Free CI waste and missing-check audits for GitHub Actions, with a conservative planner. Version 0.4.3.
 
 Start with zero-config, read-only audits: see the share of worker time spent in cancelled runs, median and p90 job durations, and missing PR checks. Then evaluate conservative job selection in shadow mode. It rebuilds its job graph from committed workflows on each plan. It runs locally or on your runners. No account, model API key, paid tier or hosted service is required.
 
