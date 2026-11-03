@@ -12,6 +12,38 @@ import { fixture, cli } from "./helpers.mjs";
 const workflow = ".github/workflows/ci.yml";
 const source =
   "on: pull_request\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: node --test\n";
+
+test("historical Markdown exposes incomplete collection, unknown evidence and limitations", () => {
+  const report = {
+    schemaVersion: 1,
+    mode: "historical-replay",
+    repository: "owner/repo",
+    selection: { complete: false, attemptsTruncated: true },
+    summary: { verifiedAttempts: 1, unknownAttempts: 1 },
+    observations: [{ pr: 12, verified: false, issues: ["run-inventory-unavailable", "<unsafe>"], candidateJobs: 0, candidateWorkerSeconds: 0, failedSuggestedSkips: 0 }],
+    limitations: ["Missing logs remain unknown."],
+  };
+  const before = structuredClone(report);
+  const text = renderMarkdown(report);
+  assert.match(text, /Partial collection/);
+  assert.match(text, /PR inventory complete \| false/);
+  assert.match(text, /Attempts truncated \| true/);
+  assert.match(text, /run-inventory-unavailable, &lt;unsafe&gt;/);
+  assert.match(text, /Missing logs remain unknown\./);
+  assert.deepEqual(report, before);
+  report.selection = { complete: true, attemptsTruncated: false };
+  assert.match(renderMarkdown(report), /Collection: complete bounded PR inventory/);
+  assert.doesNotMatch(renderMarkdown(report), /Partial collection/);
+  delete report.selection;
+  assert.match(renderMarkdown(report), /Partial collection/);
+  assert.match(renderMarkdown(report), /Attempts truncated \| unknown/);
+  report.observations = Array.from({ length: 120 }, () => report.observations[0]);
+  const bounded = renderMarkdown(report);
+  assert.match(bounded, /70 more rows omitted; see the JSON report/);
+  assert.match(bounded, /Partial collection/);
+  assert.match(bounded, /Missing logs remain unknown/);
+  assert(Buffer.byteLength(bounded) < 96 * 1024);
+});
 const plan = (extra = {}) =>
   buildPlan({
     baseSha: "a".repeat(40),
@@ -344,4 +376,22 @@ test("optional repository summaries use committed inputs and cannot change a pla
   assert(invalid.auditWarning);
   assert(Object.values(invalid.jobs).every((job) => job.run));
   assert(!JSON.stringify(invalid).includes("DIRTY_SECRET"));
+});
+
+test("affected CLI publishes a conservative matrix only after successful report output", (t) => {
+  const f = fixture(t, { "package.json": '{"type":"module"}', "src/a.js": "export const a=1;", "test/a.test.js": "import {a} from '../src/a.js'; test('a',()=>a);" });
+  const base = f.sha; f.write("src/a.js", "export const a=2;"); f.commit();
+  const output = path.join(f.root, "outputs"); fs.writeFileSync(output, "");
+  const args = [cli, "affected", "--root", f.root, "--base", base, "--github-output"];
+  const result = spawnSync(process.execPath, args, { encoding: "utf8", env: { ...process.env, GITHUB_OUTPUT: output } });
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout).tests, ["test/a.test.js"]);
+  assert.match(fs.readFileSync(output, "utf8"), /ready=true/);
+  fs.writeFileSync(output, "");
+  const readOnly = fs.openSync(path.join(f.root, "package.json"), "r");
+  try {
+    const failed = spawnSync(process.execPath, args, { stdio: ["ignore", readOnly, "pipe"], encoding: "utf8", env: { ...process.env, GITHUB_OUTPUT: output } });
+    assert.equal(failed.status, 1);
+    assert.equal(fs.readFileSync(output, "utf8"), "");
+  } finally { fs.closeSync(readOnly); }
 });

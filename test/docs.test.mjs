@@ -86,10 +86,7 @@ test("Action passes untrusted values through environment and argument arrays", (
   assert(step.env.PLANNER_BASE);
   assert(!step.run.includes("$" + "{{"));
   assert.match(step.run, /"\$\{args\[@\]\}"/);
-  assert.match(
-    action.runs.steps.find((step) => step.run?.includes("npm ci")).run,
-    /--ignore-scripts/,
-  );
+  assert(!action.runs.steps.some((step) => /npm (?:ci|install)|npx/.test(step.run ?? "")));
   assert.equal(action.inputs.enforce.default, "false");
 });
 

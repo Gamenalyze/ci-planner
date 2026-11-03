@@ -9,7 +9,22 @@ concurrency:
   group: ci-planner-${{ github.repository }}-${{ github.event.pull_request.number || github.ref }}-${{ github.sha }}
   cancel-in-progress: true
 jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run sbom:check
+      - run: npm run check
   validate:
+    needs: metadata
     strategy:
       fail-fast: false
       matrix:
@@ -42,8 +57,10 @@ jobs:
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: node --version
       - run: npm run check
+      - run: npm audit --audit-level=high
+      - run: npm audit --prefix examples/affected-tests-consumer --package-lock-only --audit-level=high
       - run: npm test
-      - run: npm audit --omit=dev --audit-level=high
+      - run: npm run consumer:smoke
       - name: Exercise the shipped Action against this repository
         uses: ./
         id: self-plan
@@ -68,7 +85,7 @@ jobs:
         run: |
           task_dir=$(mktemp -d)
           npm pack --ignore-scripts --pack-destination "$task_dir"
-          npm install --ignore-scripts --no-audit --no-fund --prefix "$task_dir/install" "$task_dir"/*.tgz
+          npm install --offline --ignore-scripts --no-audit --no-fund --prefix "$task_dir/install" "$task_dir"/*.tgz
           "$task_dir/install/node_modules/.bin/ci-planner" --version
           "$task_dir/install/node_modules/.bin/ci-planner" init --root "$GITHUB_WORKSPACE" --action-ref "$GITHUB_SHA" --format markdown > "$task_dir/setup.md"
           "$task_dir/install/node_modules/.bin/ci-planner" fix --root "$GITHUB_WORKSPACE" --format markdown > "$task_dir/fix.md"

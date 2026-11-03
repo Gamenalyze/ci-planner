@@ -1,6 +1,7 @@
 /** Compare shadow suggestions with full-run observations. Reports never grant skip authority. */
 import { createHash } from "node:crypto";
 import { auditSnapshot } from "./audit.mjs";
+import { WORKFLOW } from "./validation.mjs";
 import { HASH, SHA } from "./evidence.mjs";
 
 /**
@@ -27,7 +28,7 @@ export function validateSkipDecisions({
     !plan.identity ||
     !SHA.test(plan.identity.mergeSha ?? "") ||
     snapshot.repository !== plan.identity.repository ||
-    typeof workflow !== "string" ||
+    !WORKFLOW.test(workflow ?? "") ||
     !jobNames ||
     typeof jobNames !== "object" ||
     Array.isArray(jobNames)

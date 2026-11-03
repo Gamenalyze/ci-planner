@@ -1,0 +1,34 @@
+name: SBOM fail-fast proof
+on:
+  workflow_dispatch:
+    inputs:
+      inject-drift:
+        type: boolean
+        default: false
+        description: Deliberately mutate a vendored parser to verify that the gate blocks downstream validation.
+permissions:
+  contents: read
+jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Inject deliberate inventory drift
+        if: inputs.inject-drift
+        run: printf '\n// deliberate fail-fast proof\n' >> vendor/acorn/dist/acorn.mjs
+      - name: Verify exact vendored bytes and SBOM
+        run: npm run sbom:check
+  downstream:
+    needs: metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - run: echo 'Downstream source validation admitted by the metadata gate.'

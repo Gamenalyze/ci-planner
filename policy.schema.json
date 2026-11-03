@@ -33,7 +33,7 @@
       "maxProperties": 1000,
       "additionalProperties": false,
       "patternProperties": {
-        "^\\.github/workflows/[^/#\\s]+\\.ya?ml#[A-Za-z_][A-Za-z0-9_-]*$": {
+        "^\\.github/workflows/[^/#\\\\\\x00-\\x1f\\x7f]+\\.ya?ml#[A-Za-z_][A-Za-z0-9_-]*$": {
           "type": "object",
           "additionalProperties": false,
           "required": [

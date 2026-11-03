@@ -5,7 +5,12 @@
  */
 import fs from "node:fs";
 import { readJSONFile } from "./evidence.mjs";
-import { validRepository } from "./validation.mjs";
+import {
+  validRepository,
+  SHA,
+  WORKFLOW_FILE,
+  parseOptions,
+} from "./validation.mjs";
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -90,13 +95,16 @@ export async function collectSnapshot(
     throw Error("Expected repository OWNER/REPO");
   if (!positiveInteger(limit) || limit > MAX_RUNS)
     throw Error("Limit must be 1 through 20");
-  if (workflow && !/^[A-Za-z0-9_-][A-Za-z0-9_.-]*\.ya?ml$/.test(workflow))
+  if (workflow && !WORKFLOW_FILE.test(workflow))
     throw Error("Expected workflow filename");
   const scope = "repos/" + repository + "/actions/";
   const query = new URLSearchParams({ per_page: String(limit) });
   if (branch) query.set("branch", branch);
   const listed = await read(
-    scope + (workflow ? "workflows/" + workflow + "/" : "") + "runs?" + query,
+    scope +
+      (workflow ? "workflows/" + encodeURIComponent(workflow) + "/" : "") +
+      "runs?" +
+      query,
   );
   if (
     !Array.isArray(listed.workflow_runs) ||
@@ -337,7 +345,7 @@ export function auditSnapshot(snapshot, { rates = null } = {}) {
       !["push", "pull_request"].includes(run.event) ||
       !positiveInteger(run.workflow_id) ||
       typeof run.path !== "string" ||
-      !/^[0-9a-f]{40}$/.test(run.head_sha ?? "")
+      !SHA.test(run.head_sha ?? "")
     )
       continue;
     const key = JSON.stringify([
@@ -446,30 +454,11 @@ const HELP =
 /** Parse audit arguments and return stdout text; writes no files or CI settings. */
 export async function main(args) {
   if (args.length === 1 && args[0] === "--help") return HELP;
-  const options = {};
-  for (let i = 0; i < args.length; i++) {
-    const key = args[i];
-    if (
-      ![
-        "--repository",
-        "--workflow",
-        "--branch",
-        "--limit",
-        "--input",
-        "--snapshot",
-        "--rates",
-      ].includes(key) ||
-      Object.hasOwn(options, key)
-    )
-      throw Error("Unknown or repeated argument; use --help");
-    if (key === "--snapshot") options[key] = true;
-    else {
-      const value = args[++i];
-      if (!value || value.startsWith("--"))
-        throw Error("Missing argument value");
-      options[key] = value;
-    }
-  }
+  const options = parseOptions(
+    args,
+    ["--repository", "--workflow", "--branch", "--limit", "--input", "--rates"],
+    ["--snapshot"],
+  );
   let snapshot;
   if (options["--input"]) {
     if (

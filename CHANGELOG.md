@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0 — 2026-11-03
+
+- Replay a bounded merged-PR sample with independently collected checkout/attempt evidence and explicit matrix/required-step contracts. Unknown attempts and failed suggested skips remain separate; historical success never enables enforcement.
+- Suggest per-job script/import scopes while preserving incomplete shadow contracts.
+- Add conservative Jest/Vitest affected-test matrices for default single-package JavaScript ESM, with full-suite fallback for configuration, aliases, dynamic/runtime inputs and deleted/unknown files. Ship an executable Vitest consumer.
+- Recognize Python, Go and explicit Dockerfile check evidence, including conditional and opaque invocations.
+- Support SHA-256 Git objects and share SHA/workflow, option and Git-reader boundaries.
+- Vendor licensed YAML/JavaScript parsers, remove runtime registry installation from the Action and npm package, and check exact parser/SBOM bytes before the Node validation matrix.
+
+
 ## 0.4.3 — 2026-11-03
 
 - Allow up to five minutes for registry metadata to become visible after a successful npm upload. Polling remains bounded, reads fresh exact-version records, and never repeats the upload or overwrites a release.

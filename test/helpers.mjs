@@ -15,7 +15,7 @@ export const baseFiles = () => ({
   "test/main.test.js": "// fixture; analysis must not execute this file\n",
 });
 
-export function fixture(t, files = baseFiles()) {
+export function fixture(t, files = baseFiles(), { objectFormat = "sha1" } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "planner-v03-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const git = (...args) =>
@@ -29,7 +29,7 @@ export function fixture(t, files = baseFiles()) {
     fs.mkdirSync(path.dirname(full), { recursive: true });
     fs.writeFileSync(full, content);
   };
-  git("init", "-b", "main");
+  git("init", "--object-format=" + objectFormat, "-b", "main");
   git("config", "user.name", "Offline fixture");
   git("config", "user.email", "fixture@example.invalid");
   Object.entries(files).forEach(([name, text]) => write(name, text));

@@ -106,3 +106,7 @@ Supply explicit cost rates to audit with `--rates rates.json` in live or offline
 ```
 
 A job needs one unambiguous matching rate from its observed runner labels. Unknown/conflicting labels remain unrated. estimatedCost shows the rated and unrated seconds and whether the estimate is partial. Costs use unrounded observed execution time at owner rates; billing, queue time, included allowances and proven savings remain unknown. Rates are not fetched or invented. Older snapshots without labels cannot be priced.
+
+## Bounded history and affected-test consumer
+
+The [replay and affected-test guide](audit-roadmap.md) adds `history` and `affected` commands. History binds an exact tested merge, explicit matrix names and attempted validation steps using GitHub metadata and bounded checkout logs. It keeps unknown attempts separate from candidate worker time. Affected-test matrices have a full-suite fallback for unmodeled inputs. These observations do not relax any base-policy, attestation or enforcement gate described above.

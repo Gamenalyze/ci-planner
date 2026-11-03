@@ -18,7 +18,7 @@ Use the latest published version. Fixes ship through reviewed commits and versio
 
 - Planning reads committed Git objects and base-owned policy.
 - The CLI never executes the analyzed repository's scripts.
-- The Action installs only its own locked parser, with lifecycle scripts disabled.
+- The Action ships reviewed, lockfile-pinned parsers as vendored files; it performs no runtime registry installation.
 - Enforcement requires base opt-in, caller opt-in and exact base/head merge parents.
 - Hidden or mutable execution inputs retain jobs; unsupported graphs fail planning.
 - Missing outputs must make the caller run existing CI.
@@ -52,3 +52,11 @@ The optional audit-repo --add-checks flag writes a new reviewable workflow; the 
 Dependency suggestions never mark input contracts complete. Full-run feedback can only inhibit normal enforcement gates. Keep observation history owner-controlled; a report digest is not a signature.
 
 Reuse requires a separate owner-controlled coordinator to attest the actual tested checkout, measured runtime and ungated full execution. PR code and dependencies must never have access to its Ed25519 private key. Do not trust unsigned artifacts or a workflow_run trigger alone. Public keys and the hermetic/artifact-free contract come from the target's first parent, before the merged change. New keys cannot authorize their own introducing change. Every observed step must succeed; a skipped step requires fresh validation. The verifier requires a matching complete tree, runtime digest, expected job inventory, unexpired signature and live latest successful PR attempt. Missing evidence runs fresh. Never use reuse for deployment, signing or artifact-producing acceptance gates. See [the complete trust boundary](docs/evidence-and-performance.md).
+
+## Advisory import selection and historical logs
+
+Affected-test selection supports a deliberately narrow default JavaScript ESM subset. It does not execute repository configuration and selects the full suite for unsupported syntax, aliases, runtime inputs and deleted/unknown paths. Consumers must preserve a full-suite fallback on selector failure. The report does not complete an owner input contract.
+
+Historical replay independently reads GitHub attempt/job metadata and bounded checkout logs. It retains extracted commit IDs and execution observations, not raw logs. An owner-reviewed matrix/required-step contract and exact tested merge are required. Neither logs, successful history nor zero observed failures grant enforcement authority.
+
+The Action and CLI import reviewed vendored parser bytes. CI checks the byte inventory and SBOM against the pinned development lockfile graph before test workers start. GitHub Action pins remain SHA-1 IDs even when local Git object readers support SHA-256 repositories.

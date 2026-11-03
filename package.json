@@ -1,6 +1,6 @@
 {
   "name": "@gamenalyze/ci-planner",
-  "version": "0.4.3",
+  "version": "0.5.0",
   "description": "Free CI waste and missing-check audits for GitHub Actions, with a conservative planner",
   "type": "module",
   "license": "MIT",
@@ -21,7 +21,9 @@
     "./dependencies": "./src/dependencies.mjs",
     "./skip-validation": "./src/skip-validation.mjs",
     "./reuse": "./src/reuse.mjs",
-    "./performance": "./src/performance.mjs"
+    "./performance": "./src/performance.mjs",
+    "./affected-tests": "./src/affected-tests.mjs",
+    "./history": "./src/history.mjs"
   },
   "files": [
     "bin/",
@@ -34,14 +36,16 @@
     "policy.schema.json",
     "CONTRIBUTING.md",
     "SECURITY.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "vendor/"
   ],
   "scripts": {
     "test": "node --test test/*.test.mjs",
-    "check": "node scripts/check-syntax.mjs"
-  },
-  "dependencies": {
-    "yaml": "2.9.1"
+    "check": "node scripts/check-syntax.mjs",
+    "vendor:generate": "node scripts/vendor.mjs --write",
+    "vendor:check": "node scripts/vendor.mjs",
+    "sbom:check": "node scripts/vendor.mjs",
+    "consumer:smoke": "npm ci --prefix examples/affected-tests-consumer --ignore-scripts --no-audit --no-fund && node scripts/consumer-smoke.mjs"
   },
   "repository": {
     "type": "git",
@@ -52,5 +56,9 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "devDependencies": {
+    "acorn": "8.19.0",
+    "yaml": "2.9.1"
   }
 }

@@ -4,7 +4,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { stringify } from "yaml";
+import { stringify } from "../vendor/yaml/dist/index.js";
 import { auditRepositorySnapshot } from "./repository-audit.mjs";
 import { uniqueJSON } from "./json.mjs";
 const target = ".github/workflows/ci-planner-checks.yml";

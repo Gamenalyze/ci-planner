@@ -97,7 +97,7 @@ export function verifyReleaseCI(run, jobs, repository, sha) {
     throw Error("Release requires the exact successful canonical main push CI");
   if (
     jobs.total_count !== jobs.jobs?.length ||
-    !["validate (22)", "validate (24)"].every(
+    !["metadata", "validate (22)", "validate (24)"].every(
       (name) =>
         jobs.jobs.filter(
           (job) =>
@@ -107,7 +107,7 @@ export function verifyReleaseCI(run, jobs, repository, sha) {
         ).length === 1,
     )
   )
-    throw Error("Both Node validation lanes must succeed");
+    throw Error("Metadata gate and both Node validation lanes must succeed");
 }
 export function validReleaseSource(
   { sha, mainSha, event, ref, version },

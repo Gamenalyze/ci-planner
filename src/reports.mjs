@@ -471,6 +471,72 @@ export function renderMarkdown(report) {
     ].includes(report.mode)
   )
     content = repositoryView(report);
+  else if (report.mode === "historical-replay")
+    content = [
+      "## Historical replay",
+      "",
+      "Repository: " + markdownCell(report.repository),
+      "",
+      report.selection?.complete === true &&
+      report.selection?.attemptsTruncated === false
+        ? "Collection: complete bounded PR inventory and attempt collection."
+        : "**Partial collection: PR selection or attempt collection is incomplete or unknown. See JSON for complete evidence.**",
+      "",
+      table(
+        ["Collection", "Observed"],
+        [
+          ["PR inventory complete", report.selection?.complete ?? "unknown"],
+          ["Attempts truncated", report.selection?.attemptsTruncated ?? "unknown"],
+        ],
+      ),
+      "",
+      table(["Measure", "Observed"], Object.entries(report.summary ?? {})),
+      "",
+      table(
+        [
+          "PR",
+          "Run / attempt",
+          "Evidence",
+          "Candidate jobs",
+          "Worker seconds",
+          "Failed suggested skips",
+          "Issues",
+        ],
+        list(report.observations).map((o) => [
+          o.pr,
+          String(o.runId ?? "unknown") + " / " + String(o.attempt ?? "unknown"),
+          o.verified ? "verified checkout and full attempt" : "unknown",
+          o.candidateJobs,
+          o.candidateWorkerSeconds,
+          o.failedSuggestedSkips,
+          list(o.issues ?? []).join(", "),
+        ]),
+      ),
+      "",
+      table(["Limitations"], list(report.limitations ?? []).map((n) => [n])),
+      "",
+      "Candidate worker time is not billed savings. Historical success never grants enforcement authority.",
+    ].join("\n");
+  else if (report.mode === "affected-tests-advisory")
+    content = [
+      "## Affected tests",
+      "",
+      report.runAll
+        ? "Run the full suite: uncertain inputs or unsupported configuration."
+        : "Static import selection: review the consumer fallback before use.",
+      "",
+      table(
+        ["Runner", "Test"],
+        list(report.tests).map((n) => [report.runner, n]),
+      ),
+      "",
+      table(
+        ["File", "Fallback reason"],
+        list(report.reasons).map((r) => [r.file, r.reason]),
+      ),
+      "",
+      "Input completeness remains false. Missing or failed selection must run the full suite.",
+    ].join("\n");
   else if (report.mode === "read-only-audit") content = timingView(report);
   else if (["setup-preview", "setup-written"].includes(report.mode))
     content = setupView(report);

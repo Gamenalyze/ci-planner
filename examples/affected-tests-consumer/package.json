@@ -1,0 +1,7 @@
+{
+  "name": "ci-planner-affected-consumer",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "vitest run" },
+  "devDependencies": { "vitest": "5.1.0" }
+}

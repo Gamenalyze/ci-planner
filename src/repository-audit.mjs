@@ -4,10 +4,11 @@
  * Unknown wrappers and conditional checks remain visible as uncertain evidence.
  */
 import path from "node:path";
-import { execFileSync } from "node:child_process";
-import { parseDocument } from "yaml";
+import { gitRead } from "./evidence.mjs";
+import { parseDocument } from "../vendor/yaml/dist/index.js";
 import { uniqueJSON } from "./json.mjs";
-const WF = (p) => /^\.github\/workflows\/[^/]+\.ya?ml$/.test(p);
+import { SHA, WORKFLOW } from "./validation.mjs";
+const WF = (p) => WORKFLOW.test(p);
 const SOURCE = /\.(?:[cm]?[jt]sx?|py|go|rs|java|cs|rb)$/;
 const TEST = /(?:^|\/)(?:tests?|__tests__)(?:\/|$)|\.(?:test|spec)\.[^/]+$/;
 const SETUP =
@@ -45,7 +46,7 @@ function directory(cwd, value) {
 /** Analyze a bounded immutable snapshot; retain locations, never raw commands or secret values. */
 export function auditRepositorySnapshot({ ref, files }) {
   if (
-    !/^[0-9a-f]{40}$/.test(ref ?? "") ||
+    !SHA.test(ref ?? "") ||
     !files ||
     typeof files !== "object" ||
     Array.isArray(files) ||
@@ -76,12 +77,14 @@ export function auditRepositorySnapshot({ ref, files }) {
       throw Error("Invalid package manifest: " + name);
     }
   }
-  const observe = (kind, cwd, location, conditional = false) =>
+  const observe = (kind, cwd, location, conditional = false, details = {}) =>
     observations.push({
       kind,
       package: packages.get(cwd)?.name ?? null,
       location,
       conditional,
+      scope: cwd,
+      ...details,
     });
   const unknown = (location, reason, cwd) =>
     uncertainties.push({
@@ -247,9 +250,63 @@ export function auditRepositorySnapshot({ ref, files }) {
         );
         continue;
       }
+      if (["python", "python3"].includes(cmd) && tokens[0] === "-m") {
+        const module = tokens[1];
+        if (
+          !["pytest", "ruff", "mypy", "compileall", "pip_audit"].includes(
+            module,
+          )
+        ) {
+          unknown(at, "unrecognized-python-module", cwd);
+          continue;
+        }
+        cmd = module === "pip_audit" ? "pip-audit" : module;
+        tokens = tokens.slice(2);
+      }
       let recognized = false;
+      if (cmd === "go" && ["test", "vet", "build"].includes(tokens[0])) {
+        recognized = true;
+        if (tokens.some((t) => /^-(?:list|n)(?:=|$)/.test(t)))
+          unknown(at, "non-validation-arguments", cwd);
+        else
+          observe(
+            { test: "tests", vet: "lint", build: "build" }[tokens[0]],
+            cwd,
+            at,
+            weak ||
+              complex ||
+              !tokens.includes("./...") ||
+              tokens.some((t) => /^-(?:run|skip|exec)(?:=|$)/.test(t)),
+            { language: "go" },
+          );
+      }
+      if (["pip-audit", "govulncheck"].includes(cmd)) {
+        recognized = true;
+        observe("dependency-audit", cwd, at, weak || complex, {
+          language: cmd === "pip-audit" ? "python" : "go",
+        });
+      }
+      if (cmd === "golangci-lint" && tokens[0] === "run") {
+        recognized = true;
+        observe("lint", cwd, at, weak || complex, { language: "go" });
+      }
+      if (cmd === "compileall") {
+        recognized = true;
+        observe("syntax", cwd, at, weak || complex, { language: "python" });
+      }
+      if (cmd === "hadolint") {
+        recognized = true;
+        for (const token of tokens.filter((t) => !t.startsWith("-"))) {
+          const file = directory(cwd, token);
+          if (file && Object.hasOwn(files, file))
+            observe("container-lint", cwd, at, weak || complex, { file });
+          else unknown(at, "unresolved-dockerfile", cwd);
+        }
+      }
       if (
-        tokens.some((t) => /^--(?:listTests|list|showConfig|dry-run)$/.test(t))
+        tokens.some((t) =>
+          /^--(?:listTests|list|showConfig|dry-run|collect-only|co)$/.test(t),
+        )
       ) {
         unknown(at, "non-validation-arguments", cwd);
         continue;
@@ -283,13 +340,23 @@ export function auditRepositorySnapshot({ ref, files }) {
             continue;
           if (kind === "build" && cmd !== "tsc" && !tokens.includes("build"))
             continue;
+          if (cmd === "ruff" && tokens[0] !== "check") continue;
           observe(
             kind,
             cwd,
             at,
             weak ||
               complex ||
-              tokens.some((t) => ["--fix", "--write"].includes(t)),
+              (cmd === "pytest" &&
+                tokens.some(
+                  (t) => !["-q", "-v", "--verbose", "-ra"].includes(t),
+                )) ||
+              tokens.some((t) =>
+                ["--fix", "--write", "--exit-zero", "-k", "-m"].includes(t),
+              ),
+            cmd === "pytest" || ["ruff", "mypy", "pyright"].includes(cmd)
+              ? { language: "python" }
+              : {},
           );
         }
       if (
@@ -297,7 +364,29 @@ export function auditRepositorySnapshot({ ref, files }) {
         (tokens[0] === "build" ||
           (tokens[0] === "buildx" && tokens[1] === "build"))
       ) {
-        observe("container-build", cwd, at, true);
+        const start = tokens[0] === "buildx" ? 2 : 1;
+        const opts = tokens.slice(start),
+          atFile = opts.findIndex((t) => t === "-f" || t === "--file");
+        const inlineFile = opts.find((t) => t.startsWith("--file="));
+        const file = directory(
+          cwd,
+          atFile >= 0
+            ? (opts[atFile + 1] ?? "")
+            : (inlineFile?.slice(7) ?? "Dockerfile"),
+        );
+        if (file && Object.hasOwn(files, file))
+          observe(
+            "container-build",
+            cwd,
+            at,
+            weak ||
+              complex ||
+              (atFile < 0 && !inlineFile) ||
+              opts.some((t) => t === "--target" || t.startsWith("--target=")) ||
+              ![".", cwd].includes(opts.at(-1)),
+            { file },
+          );
+        else unknown(at, "unresolved-dockerfile-or-context", cwd);
         recognized = true;
       }
       if (!recognized) unknown(at, "unresolved-command-or-wrapper", cwd);
@@ -365,9 +454,23 @@ export function auditRepositorySnapshot({ ref, files }) {
         /^gitleaks\/gitleaks-action@|^trufflesecurity\/trufflehog@/.test(use)
       )
         observe("secret-scan", target, location, conditional);
-      else if (/^docker\/build-push-action@/.test(use))
-        observe("container-build", target, location, true);
-      else if (/^actions\/dependency-review-action@/.test(use))
+      else if (/^docker\/build-push-action@/.test(use)) {
+        const file = step.with?.file ?? "Dockerfile",
+          context = step.with?.context;
+        if (
+          typeof file === "string" &&
+          Object.hasOwn(files, file) &&
+          context === "."
+        )
+          observe(
+            "container-build",
+            target,
+            location,
+            conditional || !step.with?.file || !!step.with?.target,
+            { file },
+          );
+        else unknown(location, "unresolved-dockerfile-or-context", target);
+      } else if (/^actions\/dependency-review-action@/.test(use))
         observe("dependency-audit", target, location, true);
       else if (!SETUP.test(use))
         unknown(location, "unresolved-external-action", target);
@@ -471,9 +574,24 @@ export function auditRepositorySnapshot({ ref, files }) {
       unknown({ workflow: name }, "unreadable-workflow", "");
     }
   const checks = [];
-  function check(kind, pkg, evidence, recommendation) {
+  function check(
+    kind,
+    pkg,
+    evidence,
+    recommendation,
+    scope = null,
+    language = null,
+  ) {
     const candidates = observations.filter(
-        (o) => o.kind === kind && (pkg === null || o.package === pkg),
+        (o) =>
+          o.kind === kind &&
+          (pkg === null || o.package === pkg) &&
+          (scope === null || o.scope === scope) &&
+          (language === null
+            ? pkg === null || !o.language
+            : o.language === language) &&
+          (!["container-build", "container-lint"].includes(kind) ||
+            o.file === evidence[0]),
       ),
       covered = candidates.some((o) => !o.conditional),
       opaque = uncertainties.filter(
@@ -488,11 +606,16 @@ export function auditRepositorySnapshot({ ref, files }) {
           : "missing";
     checks.push({
       id:
-        (pkg ?? "repository") +
+        (scope === null
+          ? (pkg ?? "repository")
+          : (scope || "root") + ":" + language) +
         "#" +
         kind +
-        (kind === "container-build" ? ":" + evidence[0] : ""),
+        (["container-build", "container-lint"].includes(kind)
+          ? ":" + evidence[0]
+          : ""),
       check: kind,
+      ...(language ? { language, scope } : {}),
       package: pkg,
       status,
       repositoryEvidence: evidence,
@@ -582,7 +705,61 @@ export function auditRepositorySnapshot({ ref, files }) {
         "Run an appropriate dependency vulnerability check.",
       );
   }
-  if (names.some((p) => SOURCE.test(p)))
+  // Language roots are independent of Node packages, including repositories with no package.json.
+  const languageNames = names.filter(
+    (n) => !/(?:^|\/)(?:node_modules|vendor|fixtures|__fixtures__)\//.test(n),
+  );
+  const pythonRoots = languageNames
+    .filter((n) =>
+      /(?:^|\/)(?:pyproject\.toml|setup\.py|requirements[^/]*\.txt)$/.test(n),
+    )
+    .map((n) => (path.posix.dirname(n) === "." ? "" : path.posix.dirname(n)));
+  if (names.some((n) => n.endsWith(".py")) && !pythonRoots.length)
+    pythonRoots.push("");
+  const goRoots = languageNames
+    .filter((n) => /(?:^|\/)go\.mod$/.test(n))
+    .map((n) => (path.posix.dirname(n) === "." ? "" : path.posix.dirname(n)));
+  if (languageNames.some((n) => n.endsWith(".go")) && !goRoots.length)
+    goRoots.push("");
+  for (const [language, roots, extension] of [
+    ["python", pythonRoots, ".py"],
+    ["go", goRoots, ".go"],
+  ]) {
+    for (const cwd of new Set(roots)) {
+      const own = names.filter(
+        (n) =>
+          (!cwd || n.startsWith(cwd + "/")) &&
+          !roots.some(
+            (other) =>
+              other !== cwd &&
+              other.startsWith(cwd ? cwd + "/" : "") &&
+              n.startsWith(other + "/"),
+          ),
+      );
+      if (!own.some((n) => n.endsWith(extension))) continue;
+      for (const kind of [
+        "tests",
+        "lint",
+        "dependency-audit",
+        ...(language === "go" ? ["build"] : []),
+      ])
+        check(
+          kind,
+          null,
+          own.filter((n) => n.endsWith(extension)).slice(0, 8),
+          "Run the language's blocking " +
+            kind +
+            " in this source root; wrappers and partial invocations need owner review.",
+          cwd,
+          language,
+        );
+    }
+  }
+  if (
+    names.some(
+      (p) => SOURCE.test(p) || /(?:^|\/)Dockerfile(?:\.[^/]+)?$/.test(p),
+    )
+  )
     check(
       "secret-scan",
       null,
@@ -597,6 +774,15 @@ export function auditRepositorySnapshot({ ref, files }) {
       null,
       [name],
       "Validate this Dockerfile and its context/platform; generic build invocations require review.",
+    );
+  for (const name of names.filter((p) =>
+    /(?:^|\/)Dockerfile(?:\.[^/]+)?$/.test(p),
+  ))
+    check(
+      "container-lint",
+      null,
+      [name],
+      "Lint this Dockerfile with a blocking invocation.",
     );
   if (definitions.length)
     check(
@@ -620,29 +806,23 @@ export function auditRepositorySnapshot({ ref, files }) {
     limitations: [
       "Static evidence does not prove successful runs, branch protection, test quality or complete matrix/path coverage.",
       "External settings and opaque wrappers require review. No repository commands are executed or secret files read.",
-      "Initial package-specific rules target Node/TypeScript; other languages are not certified.",
+      "Language rules recognize Node/TypeScript, Python, Go and explicit Dockerfile invocations. Covered remains invocation evidence, not completeness or a passing result.",
       "This command edits no workflows and starts no runners.",
     ],
   };
 }
 /** Read only bounded immutable Git objects; never read dirty files or .env contents. */
 export function readRepositorySnapshot({ root = ".", ref = "HEAD" } = {}) {
-  if (!/^(?:HEAD|[0-9a-f]{40})$/.test(ref))
+  if (ref !== "HEAD" && !SHA.test(ref))
     throw Error("Expected HEAD or full commit SHA");
-  const git = (args) =>
-    execFileSync("git", ["-c", "core.fsmonitor=false", ...args], {
-      cwd: root,
-      encoding: "utf8",
-      maxBuffer: 8 * 1024 * 1024,
-      timeout: 30000,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+  const git = (args) => gitRead(root, args);
   const sha = git(["rev-parse", "--verify", ref + "^{commit}"]).trim(),
     entries = git(["ls-tree", "-r", "-z", "--full-tree", sha])
       .split("\0")
       .filter(Boolean)
       .map((line) => {
-        const m = /^(\d+) (\w+) ([0-9a-f]{40})\t([\s\S]+)$/.exec(line);
+        const m =
+          /^(\d+) (\w+) ((?:[0-9a-f]{40}|[0-9a-f]{64}))\t([\s\S]+)$/.exec(line);
         if (!m) throw Error("Invalid tree");
         return { mode: m[1], type: m[2], name: m[4] };
       });

@@ -5,15 +5,16 @@
  * @module planner
  */
 import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
-import { parseDocument, visit as visitYaml } from "yaml";
-import { validRepository } from "./validation.mjs";
+import { gitRead as git } from "./evidence.mjs";
+import {
+  parseDocument,
+  visit as visitYaml,
+} from "../vendor/yaml/dist/index.js";
+import { validRepository, SHA, ACTION_SHA, WORKFLOW } from "./validation.mjs";
 import { uniqueJSON } from "./json.mjs";
 import { githubRead } from "./audit.mjs";
 
-export const VERSION = "0.4.3";
-const SHA = /^[0-9a-f]{40}$/;
-const WORKFLOW = /^\.github\/workflows\/[^/\x00-\x1f]+\.ya?ml$/;
+export const VERSION = "0.5.0";
 const JOB = /^[A-Za-z_][A-Za-z0-9_-]*$/;
 const GLOBAL = [
   ".gitmodules",
@@ -237,7 +238,7 @@ function readPolicy(value) {
       ([reference, sha]) =>
         !/^[A-Za-z0-9-]+\/[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_./-]+)?@[A-Za-z0-9_.\/-]+$/.test(
           reference,
-        ) || !SHA.test(sha),
+        ) || !ACTION_SHA.test(sha),
     )
   )
     throw Error("Invalid owner Action pins");
@@ -498,7 +499,7 @@ export function discoverWorkflows(
             !allowActionPublishers.some(
               (p) => p.toLowerCase() === match[1].toLowerCase(),
             ) ||
-            !SHA.test(resolvedActions[reference] ?? "") ||
+            !ACTION_SHA.test(resolvedActions[reference] ?? "") ||
             actionPins[reference] !== resolvedActions[reference]
           )
             opaque = true;
@@ -751,15 +752,6 @@ export function buildPlan({
   };
 }
 
-function git(root, args, maxBuffer = 8 * 1024 * 1024) {
-  return execFileSync("git", ["-c", "core.fsmonitor=false", ...args], {
-    cwd: root,
-    encoding: "utf8",
-    maxBuffer,
-    timeout: 30000,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-}
 /**
  * Read only Git objects, bind decisions to exact commits, and load policy from base.
  * When merge is supplied, its first/second parents must equal base/head. Selection
@@ -801,7 +793,8 @@ export function planRepository(options) {
     .split("\0")
     .filter(Boolean)
     .map((line) => {
-      const match = /^(\d+) (\w+) ([0-9a-f]{40})\t([\s\S]+)$/.exec(line);
+      const match =
+        /^(\d+) (\w+) ((?:[0-9a-f]{40}|[0-9a-f]{64}))\t([\s\S]+)$/.exec(line);
       if (!match) throw Error("Unsupported Git tree entry");
       return { mode: match[1], type: match[2], path: match[4] };
     });
@@ -830,7 +823,11 @@ export function planRepository(options) {
   ]).trim();
   let policy = null;
   if (policyTree) {
-    if (!/^100644 blob [0-9a-f]{40}\t\.ci-planner\.json$/.test(policyTree))
+    if (
+      !/^100644 blob (?:[0-9a-f]{40}|[0-9a-f]{64})\t\.ci-planner\.json$/.test(
+        policyTree,
+      )
+    )
       throw Error("Policy must be a regular file at the trusted base");
     policy = uniqueJSON(
       git(root, ["show", baseSha + ":.ci-planner.json"], 64 * 1024),
@@ -880,7 +877,7 @@ export function planRepository(options) {
       );
     if (
       !m ||
-      SHA.test(m[3]) ||
+      ACTION_SHA.test(m[3]) ||
       !trustedPolicy.allowActionPublishers?.some(
         (p) => p.toLowerCase() === m[1].toLowerCase(),
       )
@@ -893,7 +890,7 @@ export function planRepository(options) {
       const response = read(
         "repos/" + m[1] + "/" + m[2] + "/commits/" + encodeURIComponent(m[3]),
       );
-      if (SHA.test(response?.sha ?? ""))
+      if (ACTION_SHA.test(response?.sha ?? ""))
         resolvedActions[reference] = response.sha;
     } catch {
       /* Unavailable resolution retains the job. */

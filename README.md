@@ -1,12 +1,18 @@
 # CI Planner
 
-Free CI waste and missing-check audits for GitHub Actions, with a conservative planner. Version 0.4.3.
+Free CI waste and missing-check audits for GitHub Actions, with a conservative planner. Version 0.5.0.
 
 Start with zero-config, read-only audits: see the share of worker time spent in cancelled runs, median and p90 job durations, and missing PR checks. Then evaluate conservative job selection in shadow mode. It rebuilds its job graph from committed workflows on each plan. It runs locally or on your runners. No account, model API key, paid tier or hosted service is required.
 
 **Upgrade before enforcing skips:** v0.3.0 and earlier can miss changed submodule inputs under Git ignore settings. Keep enforce disabled until using the reviewed v0.3.1 fix. See [security details](SECURITY.md).
 
 **This is an early release. Start in shadow mode.** Skipping depends on owner-declared input contracts. Dependency discovery suggests JS/TS scopes for owner review. Cross-run reuse requires a signed full-run attestation, whole-tree equivalence and an explicit owner runtime contract.
+
+Use `history` for a bounded merged-PR replay, `affected` for conservative Jest/Vitest matrices, and `audit-repo` for Node, Python, Go and Docker evidence. [Replay and consumer guide](docs/audit-roadmap.md) explains the full-suite fallbacks and proof limits. The Action ships its reviewed parsers without a runtime registry install.
+
+![CI Planner rendered inside an actual GitHub Actions job summary](docs/images/actions-job-summary.png)
+
+[Captured Actions summary](https://github.com/Gamenalyze/ci-planner/actions/runs/41608157098#summary-125823080996), v0.4.3 source 991ae40. This shows real shadow-mode output; no skips or savings are implied.
 
 ## What works today
 

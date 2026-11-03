@@ -5,16 +5,15 @@
  * @module fix-pr
  */
 import { execFileSync } from "node:child_process";
-import { parseDocument } from "yaml";
+import { parseDocument } from "../vendor/yaml/dist/index.js";
 import {
   auditRepositorySnapshot,
   readRepositorySnapshot,
 } from "./repository-audit.mjs";
 import { proposeCheckWorkflow } from "./check-proposals.mjs";
-import { validRepository } from "./validation.mjs";
+import { validRepository, SHA } from "./validation.mjs";
 import { markdownCell } from "./reports.mjs";
 
-const SHA = /^[0-9a-f]{40}$/;
 const safeBranch = (value) =>
   typeof value === "string" &&
   value.length <= 200 &&

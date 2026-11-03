@@ -17,7 +17,18 @@
         "CHANGELOG.md",
         "CONTRIBUTING.md",
         "SECURITY.md",
-        "LICENSE"
+        "LICENSE",
+        "vendor/**",
+        "scripts/**"
+      ]
+    },
+    ".github/workflows/ci.yml#metadata": {
+      "inputsComplete": true,
+      "inputs": [
+        "vendor/**",
+        "scripts/**",
+        "src/**",
+        "bin/**"
       ]
     }
   }
