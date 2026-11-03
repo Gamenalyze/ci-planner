@@ -17,7 +17,7 @@ Save a structured result and render it later:
     ci-planner audit-repo --root /path/to/repo > report.json
     ci-planner report --input report.json > report.md
 
-The report command defaults to Markdown and accepts structured plans, completeness audits, timing reports/snapshots, setup previews and fix receipts. It accepts one regular input file up to 4 MiB and rejects duplicate JSON keys and unsupported report types. Larger audit snapshots can be replayed through audit --input, whose existing input limit is 32 MiB.
+The report command defaults to Markdown and accepts structured plans, completeness audits, timing reports/snapshots, historical replays, setup previews and fix receipts. Historical replay summaries show PR-inventory completeness, attempt truncation, observation issue codes and limitations; incomplete or missing collection flags display a partial-collection warning. It accepts one regular input file up to 4 MiB and rejects duplicate JSON keys and unsupported report types. Larger audit snapshots can be replayed through audit --input, whose existing input limit is 32 MiB.
 
 ## GitHub job summaries
 

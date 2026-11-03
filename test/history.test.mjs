@@ -7,6 +7,7 @@ import {
   unquotedShell,
 } from "../src/history.mjs";
 import { fixture } from "./helpers.mjs";
+import { renderMarkdown } from "../src/reports.mjs";
 const workflow = ".github/workflows/ci.yml",
   pin = "a".repeat(40);
 const source = `on: pull_request\njobs:\n  tests:\n    runs-on: ubuntu-latest\n    strategy:\n      matrix:\n        node: [22, 24]\n    steps:\n      - uses: actions/checkout@${pin}\n      - run: npm test\n`;
@@ -201,6 +202,11 @@ test("bounded historical replay separates known success, failed suggested skips 
   assert.equal(report.summary.candidateWorkerSeconds, 40);
   assert.equal(report.selection.attemptsTruncated, true);
   assert(report.observations[1].issues.includes("run-inventory-unavailable"));
+  const markdown = renderMarkdown(report);
+  assert.match(markdown, /Partial collection/);
+  assert.match(markdown, /Attempts truncated \| true/);
+  assert.match(markdown, /run-inventory-unavailable/);
+  assert.match(markdown, /Missing logs/);
   for (const v of ["partial", "missing-log"]) {
     variant = v;
     report = await replay();

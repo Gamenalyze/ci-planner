@@ -477,6 +477,19 @@ export function renderMarkdown(report) {
       "",
       "Repository: " + markdownCell(report.repository),
       "",
+      report.selection?.complete === true &&
+      report.selection?.attemptsTruncated === false
+        ? "Collection: complete bounded PR inventory and attempt collection."
+        : "**Partial collection: PR selection or attempt collection is incomplete or unknown. See JSON for complete evidence.**",
+      "",
+      table(
+        ["Collection", "Observed"],
+        [
+          ["PR inventory complete", report.selection?.complete ?? "unknown"],
+          ["Attempts truncated", report.selection?.attemptsTruncated ?? "unknown"],
+        ],
+      ),
+      "",
       table(["Measure", "Observed"], Object.entries(report.summary ?? {})),
       "",
       table(
@@ -487,6 +500,7 @@ export function renderMarkdown(report) {
           "Candidate jobs",
           "Worker seconds",
           "Failed suggested skips",
+          "Issues",
         ],
         list(report.observations, 100).map((o) => [
           o.pr,
@@ -495,8 +509,11 @@ export function renderMarkdown(report) {
           o.candidateJobs,
           o.candidateWorkerSeconds,
           o.failedSuggestedSkips,
+          list(o.issues ?? []).join(", "),
         ]),
       ),
+      "",
+      table(["Limitations"], list(report.limitations ?? []).map((n) => [n])),
       "",
       "Candidate worker time is not billed savings. Historical success never grants enforcement authority.",
     ].join("\n");

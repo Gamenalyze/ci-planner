@@ -12,6 +12,32 @@ import { fixture, cli } from "./helpers.mjs";
 const workflow = ".github/workflows/ci.yml";
 const source =
   "on: pull_request\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: node --test\n";
+
+test("historical Markdown exposes incomplete collection, unknown evidence and limitations", () => {
+  const report = {
+    schemaVersion: 1,
+    mode: "historical-replay",
+    repository: "owner/repo",
+    selection: { complete: false, attemptsTruncated: true },
+    summary: { verifiedAttempts: 1, unknownAttempts: 1 },
+    observations: [{ pr: 12, verified: false, issues: ["run-inventory-unavailable", "<unsafe>"], candidateJobs: 0, candidateWorkerSeconds: 0, failedSuggestedSkips: 0 }],
+    limitations: ["Missing logs remain unknown."],
+  };
+  const before = structuredClone(report);
+  const text = renderMarkdown(report);
+  assert.match(text, /Partial collection/);
+  assert.match(text, /PR inventory complete \| false/);
+  assert.match(text, /Attempts truncated \| true/);
+  assert.match(text, /run-inventory-unavailable, &lt;unsafe&gt;/);
+  assert.match(text, /Missing logs remain unknown\./);
+  assert.deepEqual(report, before);
+  report.selection = { complete: true, attemptsTruncated: false };
+  assert.match(renderMarkdown(report), /Collection: complete bounded PR inventory/);
+  assert.doesNotMatch(renderMarkdown(report), /Partial collection/);
+  delete report.selection;
+  assert.match(renderMarkdown(report), /Partial collection/);
+  assert.match(renderMarkdown(report), /Attempts truncated \| unknown/);
+});
 const plan = (extra = {}) =>
   buildPlan({
     baseSha: "a".repeat(40),
