@@ -1,8 +1,10 @@
 # CI Planner
 
-Free CI audits and conservative pull request plans for GitHub Actions. Version 0.3.0.
+Free CI audits and conservative pull request plans for GitHub Actions. Version 0.3.1.
 
 CI Planner helps you see where CI time goes and decide which jobs a PR needs. It rebuilds its job graph from committed workflows on each plan. It runs locally or on your runners. No account, model API key, paid tier or hosted service is required.
+
+**Upgrade before enforcing skips:** v0.3.0 and earlier can miss changed submodule inputs under Git ignore settings. Keep enforce disabled until using the reviewed v0.3.1 fix. See [security details](SECURITY.md).
 
 **This is an early release. Start in shadow mode.** Skipping depends on owner-declared input contracts. Dependency discovery suggests JS/TS scopes for owner review. Cross-run reuse requires a signed full-run attestation, whole-tree equivalence and an explicit owner runtime contract.
 
@@ -26,7 +28,7 @@ Unknown inputs, structural changes, shared runtime/control changes, new jobs, hi
 
 ## Install
 
-For GitHub Actions, use `Gamenalyze/ci-planner@v0.3.0` with the [complete workflow example](examples/pull-request.yml). Start in shadow mode and keep the run-all fallback. For production, pin the Action to the reviewed release commit SHA. The Action runs on your runner; it needs no CI Planner account, API key or hosted service.
+For GitHub Actions, use the full reviewed commit SHA from the v0.3.1 release with the [complete workflow example](examples/pull-request.yml). A tag is a convenient version label but remains mutable; the planner intentionally treats it as uncertain execution input. Start in shadow mode and keep the run-all fallback. For production, pin the Action to the reviewed release commit SHA. The Action runs on your runner; it needs no CI Planner account, API key or hosted service.
 
 Requires Node.js 22 or newer and Git. Live audits also need an installed, authenticated [GitHub CLI](https://cli.github.com/). CI tests Node.js 22 and 24; the Action preserves an existing Node.js 22+ runtime and installs Node.js 24 only when needed.
 

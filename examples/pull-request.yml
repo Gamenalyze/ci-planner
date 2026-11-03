@@ -22,7 +22,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: "24"
-      - uses: Gamenalyze/ci-planner@v0.3.0
+      - uses: Gamenalyze/ci-planner@v0.3.1
         id: scope
         with:
           base: ${{ github.event.pull_request.base.sha }}

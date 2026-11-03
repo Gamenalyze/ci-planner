@@ -1,6 +1,12 @@
-# Security — 0.3.0
+# Security — 0.3.1
 
 CI Planner analyzes untrusted repository metadata. It must not turn that metadata into privileged execution or successful evidence.
+
+## Submodule skip bypass fixed in 0.3.1
+
+Version 0.3.0 and earlier can miss a changed submodule gitlink when Git ignore settings hide it from the planner diff. This can wrongly skip an enforce-mode job even when its declared inputs include that submodule. Keep enforce disabled until using a reviewed v0.3.1 commit or release. Shadow mode still runs every check.
+
+The fix uses an explicit --ignore-submodules=none override. Regression fixtures cover committed .gitmodules, local .git/config and dirty worktree .gitmodules settings. No published tag is moved by this change.
 
 ## Report a vulnerability
 
