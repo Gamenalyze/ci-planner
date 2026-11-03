@@ -20,7 +20,9 @@ export function advisePerformance(snapshot) {
   const audit = auditSnapshot(snapshot),
     findings = [];
   const cacheHits = [],
-    jobIds = new Set();
+    jobIds = new Set(),
+    aggregates = new Map(),
+    shardRatios = new Map();
   for (const run of snapshot.runs) {
     const jobs = run.jobs.items,
       shards = new Map(),
@@ -71,6 +73,34 @@ export function advisePerformance(snapshot) {
           knownCacheStep = true;
         }
       }
+      const aggregateKey = JSON.stringify([
+        run.path ?? run.workflow_id ?? "unknown",
+        job.name,
+      ]);
+      const aggregate = aggregates.get(aggregateKey) ?? {
+        workflow: run.path ?? String(run.workflow_id ?? "unknown"),
+        job: job.name,
+        durations: [],
+        successfulDurations: [],
+        installSeconds: 0,
+        samples: 0,
+        incompleteSamples: 0,
+      };
+      aggregate.samples++;
+      aggregate.incompleteSamples += Number(
+        !audit.runs.find((r) => r.id === run.id)?.complete,
+      );
+      if (duration !== null) aggregate.durations.push(duration);
+      if (
+        duration !== null &&
+        run.event === "pull_request" &&
+        run.conclusion === "success" &&
+        job.conclusion === "success" &&
+        audit.runs.find((r) => r.id === run.id)?.complete
+      )
+        aggregate.successfulDurations.push(duration);
+      aggregate.installSeconds += installSeconds;
+      aggregates.set(aggregateKey, aggregate);
       if (installSeconds >= 30)
         installs.push({ job: job.name, seconds: installSeconds });
       if (installSeconds >= 60 && !knownCacheStep)
@@ -92,11 +122,19 @@ export function advisePerformance(snapshot) {
             "Compare cache transfer time and size with a fresh install; do not share incompatible native artifacts.",
         });
     }
-    for (const members of shards.values()) {
+    for (const [label, members] of shards) {
       if (members.length < 2) continue;
       const times = members.map((m) => m.seconds),
         shortest = Math.min(...times),
         longest = Math.max(...times);
+      const shardKey = JSON.stringify([
+        run.path ?? run.workflow_id ?? "unknown",
+        label,
+      ]);
+      shardRatios.set(shardKey, [
+        ...(shardRatios.get(shardKey) ?? []),
+        shortest > 0 ? longest / shortest : null,
+      ]);
       if (longest >= 120 && longest >= Math.max(1, shortest) * 1.5)
         findings.push({
           type: "uneven-shards-review",
@@ -170,13 +208,63 @@ export function advisePerformance(snapshot) {
       advice:
         "Review the instrumented cache misses, key stability and restore scope. Keep lockfile, OS, architecture and toolchain compatibility in the key.",
     });
+  // Merge repeated review prompts across runs while retaining supporting run IDs.
+  const grouped = new Map();
+  for (const finding of findings) {
+    const key = JSON.stringify([
+      finding.type,
+      [...(finding.jobs ?? [])].sort(),
+    ]);
+    const existing = grouped.get(key);
+    if (existing) {
+      existing.runIds = [
+        ...new Set([...existing.runIds, ...finding.runIds]),
+      ].sort((a, b) => a - b);
+      existing.observations++;
+      existing.observedSeconds =
+        (existing.observedSeconds ?? 0) + (finding.observedSeconds ?? 0);
+    } else grouped.set(key, { ...finding, observations: 1 });
+  }
+  const jobSummaries = [...aggregates.values()]
+    .sort(
+      (a, b) =>
+        a.workflow.localeCompare(b.workflow) || a.job.localeCompare(b.job),
+    )
+    .map((a) => {
+      const sorted = [...a.durations].sort((x, y) => x - y);
+      const label = a.job.replace(
+        /\bshard\s*[:= -]?\s*\d+(?:\s*\/\s*\d+)?|\b\d+\s*\/\s*\d+\b/gi,
+        "{shard}",
+      );
+      const ratios = (
+        shardRatios.get(JSON.stringify([a.workflow, label])) ?? []
+      ).filter((r) => r !== null);
+      return {
+        workflow: a.workflow,
+        job: a.job,
+        samples: a.samples,
+        timedSamples: sorted.length,
+        incompleteSamples: a.incompleteSamples,
+        medianSeconds: sorted.length ? median(sorted) : null,
+        p90Seconds: sorted.length
+          ? sorted[Math.ceil(sorted.length * 0.9) - 1]
+          : null,
+        medianShardImbalanceRatio: ratios.length ? median(ratios) : null,
+        repeatedInstallSeconds: a.installSeconds,
+        successfulPRSamples: a.successfulDurations.length,
+        estimatedWorkerSecondsPerPR: a.successfulDurations.length
+          ? median(a.successfulDurations)
+          : null,
+      };
+    });
   return {
     schemaVersion: 1,
     mode: "performance-advice",
     repository: snapshot.repository,
     observedRuns: audit.runs.length,
     completeRuns: audit.totals.completeRuns,
-    findings,
+    findings: [...grouped.values()],
+    jobSummaries,
     cache: {
       observedHits: cacheHits.filter(Boolean).length,
       samples: cacheHits.length,

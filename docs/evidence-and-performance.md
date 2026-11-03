@@ -90,3 +90,19 @@ Advice uses bounded job and step timing, not logs. It highlights explicit shard 
 Default GitHub metadata does not report cache hits. For measured hit-rate advice, a trusted collector may add cacheObservations to its snapshot: each record has jobId, stepNumber and boolean hit, and must identify an observed step. Duplicate or unbound observations are rejected. At least three observations with a hit rate below 50% produce a review prompt. Without instrumentation, hitRate stays null.
 
 Timing thresholds are review heuristics: an explicit shard at least two minutes long and 1.5 times the shortest peer; install steps at least 30 seconds in two jobs; installs or cache transfers at least one minute; and a finishing tail at least one minute. Different matrix workloads and partial runs can skew these observations. Savings and billing remain null. Review changes manually and preserve runner placement, test coverage and all acceptance gates.
+
+## Changes in 0.4.0
+
+Attestation requires testedSha to equal the successful GitHub run head exactly. A two-parent commit with that head as its second parent does not prove the merge tree was executed and cannot be signed. This may force ordinary PR synthetic-merge integrations to run fresh; independent coordinator-proved merge signing is not implemented.
+
+Validation feedback intentionally binds head and merge through the exact shadow-plan hash. A new push requires new full-run feedback. Historical passing observations never clear a later revision's fallback.
+
+Performance reports contain one jobSummaries row per workflow/display-name pair: sample count, timed samples, incomplete samples, median duration, nearest-rank p90, median observed shard ratio, summed install-step time and median worker-seconds from complete successful PR samples. Failed/cancelled durations remain in the descriptive median/p90; estimates use only complete successful PR runs. Matrix members retain separate names. Repeated findings retain their supporting run IDs and observation count. Install time is observed setup, not proven avoidable waste.
+
+Supply explicit cost rates to audit with `--rates rates.json` in live or offline mode:
+
+```json
+{"currency":"USD","perMinute":{"ubuntu-latest":0.008,"self-hosted":0}}
+```
+
+A job needs one unambiguous matching rate from its observed runner labels. Unknown/conflicting labels remain unrated. estimatedCost shows the rated and unrated seconds and whether the estimate is partial. Costs use unrounded observed execution time at owner rates; billing, queue time, included allowances and proven savings remain unknown. Rates are not fetched or invented. Older snapshots without labels cannot be priced.

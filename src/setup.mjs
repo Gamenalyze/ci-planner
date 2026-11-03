@@ -8,7 +8,10 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { stringify } from "yaml";
 import { buildPlan, discoverWorkflows, VERSION } from "./planner.mjs";
-import { readRepositorySnapshot } from "./repository-audit.mjs";
+import {
+  auditRepositorySnapshot,
+  readRepositorySnapshot,
+} from "./repository-audit.mjs";
 
 const workflowPath = ".github/workflows/ci-planner.yml";
 const policyPath = ".ci-planner.json";
@@ -82,15 +85,70 @@ export function proposeSetup(snapshot, { actionRef = "v" + VERSION } = {}) {
     },
   });
   const graph = discoverWorkflows({ ...sources, [workflowPath]: content });
+  const names = Object.keys(snapshot.files);
+  // Propose reviewable source scopes, never infer completeness or execute scripts.
+  const ignored = [
+    "README.md",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "LICENSE",
+    "docs/**",
+  ].filter((pattern) =>
+    pattern === "docs/**"
+      ? names.some((n) => n.startsWith("docs/"))
+      : names.includes(pattern),
+  );
+  const proposedInputs = new Set();
+  for (const name of names) {
+    if (
+      /(?:^|\/)(?:node_modules|vendor|fixtures|__fixtures__)\//.test(name) ||
+      /(?:^|\/)\.env(?:\.|$)/.test(name)
+    )
+      continue;
+    if (
+      /^(?:README|CHANGELOG|CONTRIBUTING|SECURITY)\.md$|^LICENSE$|^docs\//.test(
+        name,
+      )
+    )
+      continue;
+    const parts = name.split("/");
+    const pattern = parts.length > 1 ? parts[0] + "/**" : name;
+    try {
+      if (!/[\\\x00-\x20?\[\]{}!]/.test(pattern)) proposedInputs.add(pattern);
+    } catch {
+      /* Unrepresentable names remain unmapped. */
+    }
+  }
+  // Documentation read by package scripts is input even when proposed as ignored.
+  const manifestText = names
+    .filter((n) => /(?:^|\/)package\.json$/.test(n))
+    .map((n) => snapshot.files[n])
+    .filter((text) => typeof text === "string")
+    .join("\n");
+  for (const name of names.filter((n) =>
+    /^(?:README|CHANGELOG|CONTRIBUTING|SECURITY)\.md$|^LICENSE$|^docs\//.test(
+      n,
+    ),
+  )) {
+    if (manifestText.includes(name) || /npm\s+pack/.test(manifestText)) {
+      proposedInputs.add(name.startsWith("docs/") ? "docs/**" : name);
+    }
+  }
+  const suggestedInputs =
+    proposedInputs.size > 0 && proposedInputs.size <= 200
+      ? [...proposedInputs].sort()
+      : ["**"];
+  const completeness = auditRepositorySnapshot(snapshot);
   const jobs = Object.fromEntries(
     [...graph.keys()].map((key) => [
       key,
-      { inputsComplete: false, inputs: ["**"] },
+      { inputsComplete: false, inputs: suggestedInputs },
     ]),
   );
   if (Object.keys(jobs).length > 1000)
     throw Error("Setup exceeds the 1000-job policy bound");
-  const policy = { schemaVersion: 1, mode: "shadow", jobs };
+  const policy = { schemaVersion: 1, mode: "shadow", ignored, jobs };
   // Exercise the same policy validator used by real plans, without granting any skip.
   buildPlan({
     baseSha: snapshot.ref,
@@ -122,6 +180,12 @@ export function proposeSetup(snapshot, { actionRef = "v" + VERSION } = {}) {
       },
     ],
     discoveredJobs: graph.size,
+    scopeProposal: {
+      inputs: suggestedInputs,
+      ignored,
+      requiresOwnerReview: true,
+      completeness: completeness.summary,
+    },
     existingPolicy,
     warnings: [
       ...(existingPolicy

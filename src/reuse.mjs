@@ -174,14 +174,10 @@ export async function attestValidation(
   const { run, jobs } = await successfulRun(repository, runId, read);
   if (jobs.some((j) => Date.parse(j.completed_at) > now))
     throw Error("Run completion is in the future");
-  const parents = gitRead(root, ["rev-list", "--parents", "-n", "1", testedSha])
-    .trim()
-    .split(" ");
-  if (
-    run.head_sha !== testedSha &&
-    (parents.length !== 3 || parents[2] !== run.head_sha)
-  )
-    throw Error("Tested commit is neither the PR head nor its merge");
+  if (run.head_sha !== testedSha)
+    throw Error(
+      "Tested commit must equal the successful run head; merge attestation needs independent coordinator proof",
+    );
   const statement = {
     schemaVersion: 1,
     repository,

@@ -9,8 +9,9 @@ import { execFileSync } from "node:child_process";
 import { parseDocument, visit as visitYaml } from "yaml";
 import { validRepository } from "./validation.mjs";
 import { uniqueJSON } from "./json.mjs";
+import { githubRead } from "./audit.mjs";
 
-export const VERSION = "0.3.1";
+export const VERSION = "0.4.0";
 const SHA = /^[0-9a-f]{40}$/;
 const WORKFLOW = /^\.github\/workflows\/[^/\x00-\x1f]+\.ya?ml$/;
 const JOB = /^[A-Za-z_][A-Za-z0-9_-]*$/;
@@ -45,6 +46,11 @@ const GLOBAL = [
   "Dockerfile",
   "Dockerfile.*",
 ];
+const SHARED = [
+  ...GLOBAL,
+  ...GLOBAL.filter((p) => !p.includes("/")).map((p) => "**/" + p),
+];
+const patternCache = new Map();
 const digest = (value) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const object = (value) =>
@@ -59,6 +65,8 @@ const object = (value) =>
  * @throws {Error} Unsupported pattern syntax.
  */
 export function patternMatches(pattern, filename) {
+  if (patternCache.has(pattern))
+    return patternCache.get(pattern).test(filename);
   if (
     typeof pattern !== "string" ||
     !pattern ||
@@ -88,7 +96,11 @@ export function patternMatches(pattern, filename) {
           .map((part) => part.replace(/[.*+?^$()|[\]\\]/g, "\\$&"))
           .join("[^/]*") + (i < parts.length - 1 ? "/" : "");
   }
-  return new RegExp(regex + "$").test(filename);
+  const compiled = new RegExp(regex + "$");
+  // Bounded across long-lived API callers; one plan fits within this bound.
+  if (patternCache.size >= 250000) patternCache.clear();
+  patternCache.set(pattern, compiled);
+  return compiled.test(filename);
 }
 
 /** Inspect expressions in execution fields; plain text such as a step name is not an input. */
@@ -119,7 +131,18 @@ function hasHiddenExpression(value) {
         }
         if (!quoted) body += char;
       }
-      if (!closed || /\b(?:secrets|vars|inputs|github)\b/i.test(body))
+      // Only a small explicit set of routing facts is safe. PR body/title,
+      // runner paths and computed context indexing remain external inputs.
+      const routing = body
+        .replace(
+          /\bgithub\.(?:event_name|sha|ref_name|ref_type|ref|base_ref|head_ref|event\.pull_request\.(?:number|base\.sha|head\.sha))\b(?![.\[])/gi,
+          "",
+        )
+        .replace(/\bmatrix\.[A-Za-z_][A-Za-z0-9_-]*\b(?![.\[])/gi, "");
+      if (
+        !closed ||
+        /\b(?:secrets|vars|inputs|env|github|matrix|runner)\b/i.test(routing)
+      )
         return true;
     }
     return false;
@@ -130,6 +153,31 @@ function hasHiddenExpression(value) {
     typeof value === "object" &&
     Object.values(value).some(hasHiddenExpression)
   );
+}
+
+function hiddenConditions(value) {
+  if (Array.isArray(value)) return value.some(hiddenConditions);
+  if (!object(value)) return false;
+  return Object.entries(value).some(([field, child]) =>
+    field === "if" && typeof child === "string"
+      ? hasHiddenExpression(
+          child.includes("$" + "{{") ? child : "$" + "{{" + child + "}}",
+        )
+      : hiddenConditions(child),
+  );
+}
+
+/** Common hidden shell inputs; arbitrary scripts still require owner review. */
+function hiddenShell(value) {
+  if (Array.isArray(value)) return value.some(hiddenShell);
+  if (!object(value)) return false;
+  return Object.entries(value).some(([key, child]) => {
+    if (key === "run" && typeof child === "string")
+      return /(?:\$\{?(?:GITHUB_(?:EVENT_PATH|BASE_REF|HEAD_REF|REF|SHA|TOKEN)|RUNNER_[A-Z_]+)|\$env:(?:GITHUB|RUNNER)_|%GITHUB_[A-Z_]+%|\b(?:curl|wget|Invoke-WebRequest|Invoke-RestMethod)\b|\bgh\s+(?:api|run|release)\b)/i.test(
+        child,
+      );
+    return hiddenShell(child);
+  });
 }
 
 const matches = (patterns, filename) =>
@@ -160,8 +208,39 @@ function readPolicy(value) {
   )
     throw Error("Invalid policy");
   for (const key of Object.keys(value))
-    if (!["schemaVersion", "mode", "globals", "ignored", "jobs"].includes(key))
+    if (
+      ![
+        "schemaVersion",
+        "mode",
+        "globals",
+        "ignored",
+        "jobs",
+        "allowActionPublishers",
+        "actionPins",
+      ].includes(key)
+    )
       throw Error("Unknown policy field");
+  const allowActionPublishers = value.allowActionPublishers ?? [];
+  if (
+    !Array.isArray(allowActionPublishers) ||
+    allowActionPublishers.length > 100 ||
+    !allowActionPublishers.every(
+      (p) => typeof p === "string" && /^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/.test(p),
+    )
+  )
+    throw Error("Invalid Action publisher allowlist");
+  const actionPins = value.actionPins ?? {};
+  if (
+    !object(actionPins) ||
+    Object.keys(actionPins).length > 200 ||
+    Object.entries(actionPins).some(
+      ([reference, sha]) =>
+        !/^[A-Za-z0-9-]+\/[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_./-]+)?@[A-Za-z0-9_.\/-]+$/.test(
+          reference,
+        ) || !SHA.test(sha),
+    )
+  )
+    throw Error("Invalid owner Action pins");
   const jobs = Object.fromEntries(
     Object.entries(value.jobs).map(([key, rule]) => {
       const [workflow, id, extra] = key.split("#");
@@ -196,6 +275,8 @@ function readPolicy(value) {
   return {
     schemaVersion: 1,
     mode: value.mode,
+    allowActionPublishers,
+    actionPins,
     globals: patterns(value.globals ?? []),
     ignored: patterns(value.ignored ?? []),
     jobs,
@@ -209,7 +290,16 @@ function readPolicy(value) {
  * @param {Record<string, string>} sources Workflow paths mapped to YAML text.
  * @returns {Map<string, {key:string, workflow:string, id:string, needs:string[], implicitInputs:string[], opaque:boolean}>}
  */
-export function discoverWorkflows(sources) {
+export function discoverWorkflows(
+  sources,
+  {
+    event,
+    localSources = {},
+    resolvedActions = {},
+    allowActionPublishers = [],
+    actionPins = {},
+  } = {},
+) {
   if (
     !object(sources) ||
     !Object.keys(sources).length ||
@@ -246,6 +336,16 @@ export function discoverWorkflows(sources) {
       !Object.keys(workflow.jobs).length
     )
       throw Error("Workflow has no jobs: " + filename);
+    const trigger = workflow.on;
+    const events =
+      typeof trigger === "string"
+        ? [trigger]
+        : Array.isArray(trigger)
+          ? trigger
+          : object(trigger)
+            ? Object.keys(trigger)
+            : null;
+    if (event && events && !events.includes(event)) continue;
     for (const [id, job] of Object.entries(workflow.jobs)) {
       if (!JOB.test(id) || !object(job))
         throw Error("Unsupported job identifier or body");
@@ -263,6 +363,27 @@ export function discoverWorkflows(sources) {
           : []),
       ].filter((value) => value !== undefined);
       const implicitInputs = [];
+      const dataNeeds = new Set();
+      // `if` may inspect ordering results; other needs access can carry data.
+      function inspectNeeds(value, field = "") {
+        if (field === "if") return;
+        if (typeof value === "string") {
+          for (const m of value.matchAll(
+            /\bneeds\.([A-Za-z_][A-Za-z0-9_-]*)\.outputs\b/g,
+          ))
+            dataNeeds.add(m[1]);
+          // Bracket/dynamic indexing cannot establish a control-only edge.
+          if (
+            /\bneeds(?:\.[A-Za-z_][A-Za-z0-9_-]*)?\s*\[|toJSON\s*\(\s*needs\b|\bneeds\.\*/i.test(
+              value,
+            )
+          )
+            needs.forEach((n) => dataNeeds.add(n));
+        } else if (Array.isArray(value)) value.forEach((v) => inspectNeeds(v));
+        else if (object(value))
+          Object.entries(value).forEach(([k, v]) => inspectNeeds(v, k));
+      }
+      inspectNeeds([workflow.env, workflow.defaults, job]);
       // Routing metadata does not affect execution inputs. Inherited env/defaults do.
       const execution = Object.fromEntries(
         Object.entries(job).filter(
@@ -282,6 +403,8 @@ export function discoverWorkflows(sources) {
         job.environment !== undefined ||
         job.secrets !== undefined ||
         hasHiddenExpression([workflow.env, workflow.defaults, execution]) ||
+        hiddenShell(execution) ||
+        hasHiddenExpression(job.strategy?.matrix) ||
         [
           job.if,
           ...(Array.isArray(job.steps)
@@ -296,22 +419,92 @@ export function discoverWorkflows(sources) {
                 : "$" + "{{" + condition + "}}",
             ),
         );
-      for (const reference of references) {
+      const seenLocals = new Set();
+      function inspectReference(reference, depth = 0) {
         if (typeof reference !== "string" || reference.includes("$" + "{{")) {
           opaque = true;
-          continue;
+          return;
         }
         if (
           /^\.\/[A-Za-z0-9_./-]+$/.test(reference) &&
           !reference.split("/").includes("..")
         ) {
-          implicitInputs.push(reference.slice(2), reference.slice(2) + "/**");
+          const local = reference.slice(2).replace(/\/$/, "");
+          implicitInputs.push(local, local + "/**");
+          if (seenLocals.has(local)) {
+            opaque = true;
+            return;
+          }
+          if (depth >= 10) {
+            opaque = true;
+            return;
+          }
+          seenLocals.add(local);
+          const candidates = /\.ya?ml$/.test(local)
+            ? [local]
+            : [local + "/action.yml", local + "/action.yaml"];
+          const found = candidates.filter((n) =>
+            Object.hasOwn(localSources, n),
+          );
+          if (
+            found.length !== 1 ||
+            typeof localSources[found[0]] !== "string"
+          ) {
+            opaque = true;
+            return;
+          }
+          const doc = parseDocument(localSources[found[0]], {
+            uniqueKeys: true,
+            strict: true,
+          });
+          let alias = false;
+          visitYaml(doc, {
+            Alias() {
+              alias = true;
+            },
+          });
+          if (doc.errors.length || doc.warnings.length || alias) {
+            opaque = true;
+            return;
+          }
+          const nested = doc.toJS({ maxAliasCount: 0 });
+          // Reusable workflows remain fresh until their call inputs and nested jobs are modeled.
+          if (!object(nested) || nested.runs?.using !== "composite") {
+            opaque = true;
+            return;
+          }
+          if (
+            hasHiddenExpression(nested.runs.steps) ||
+            hiddenShell(nested.runs.steps) ||
+            hiddenConditions(nested.runs.steps)
+          )
+            opaque = true;
+          for (const step of nested.runs.steps ?? [])
+            if (step?.uses !== undefined)
+              inspectReference(step.uses, depth + 1);
+          seenLocals.delete(local);
         } else if (
-          !/^[A-Za-z0-9_.\/-]+@[0-9a-f]{40}$/.test(reference) &&
-          !/^docker:\/\/[^\s]+@sha256:[0-9a-f]{64}$/.test(reference)
-        )
-          opaque = true;
+          /^[A-Za-z0-9_.\/-]+@[0-9a-f]{40}$/.test(reference) ||
+          /^docker:\/\/[^\s]+@sha256:[0-9a-f]{64}$/.test(reference)
+        ) {
+          return;
+        } else {
+          const match =
+            /^([A-Za-z0-9-]+)\/([A-Za-z0-9_.-]+)(?:\/[A-Za-z0-9_./-]+)?@([A-Za-z0-9_.\/-]+)$/.exec(
+              reference,
+            );
+          if (
+            !match ||
+            !allowActionPublishers.some(
+              (p) => p.toLowerCase() === match[1].toLowerCase(),
+            ) ||
+            !SHA.test(resolvedActions[reference] ?? "") ||
+            actionPins[reference] !== resolvedActions[reference]
+          )
+            opaque = true;
+        }
       }
+      for (const reference of references) inspectReference(reference);
       const containers = [
         job.container,
         ...Object.values(job.services ?? {}),
@@ -333,7 +526,8 @@ export function discoverWorkflows(sources) {
         workflow: filename,
         id,
         needs: needs.map((name) => filename + "#" + name),
-        implicitInputs,
+        implicitInputs: [...new Set(implicitInputs)],
+        dataNeeds: [...dataNeeds],
         opaque,
       });
     }
@@ -383,6 +577,8 @@ export function buildPlan({
   policy: rawPolicy = null,
   workflows,
   changes,
+  localSources = {},
+  resolvedActions = {},
 }) {
   if (
     !SHA.test(baseSha) ||
@@ -404,7 +600,13 @@ export function buildPlan({
   )
     throw Error("Invalid or oversized change inventory");
   const policy = readPolicy(rawPolicy);
-  const graph = discoverWorkflows(workflows);
+  const graph = discoverWorkflows(workflows, {
+    event,
+    localSources,
+    resolvedActions,
+    allowActionPublishers: policy.allowActionPublishers,
+    actionPins: policy.actionPins,
+  });
   const fullReasons = [];
   if (force) fullReasons.push("manual-full-validation");
   if (validationFallback) fullReasons.push("skip-validation-requires-full-run");
@@ -420,7 +622,7 @@ export function buildPlan({
   )
     fullReasons.push("structural-or-unknown-change");
   const allInputs = [
-    ...GLOBAL,
+    ...SHARED,
     ...policy.globals,
     ...policy.ignored,
     ...Object.values(policy.jobs).flatMap((rule) => rule.inputs),
@@ -428,7 +630,7 @@ export function buildPlan({
   ];
   if (
     changes.some((change) =>
-      matches([...GLOBAL, ...policy.globals], change.path),
+      matches([...SHARED, ...policy.globals], change.path),
     )
   )
     fullReasons.push("shared-control-or-runtime-input");
@@ -466,9 +668,12 @@ export function buildPlan({
   const consumers = new Map([...graph.keys()].map((key) => [key, []]));
   for (const [key, job] of graph) {
     const controls = policy.jobs[key]?.controlNeeds ?? [];
-    for (const id of controls)
+    for (const id of controls) {
       if (!job.needs.includes(job.workflow + "#" + id))
         throw Error("Control dependency is not a needs edge");
+      if (job.dataNeeds.includes(id))
+        throw Error("Control dependency carries needs outputs");
+    }
     for (const upstream of job.needs)
       if (!controls.includes(graph.get(upstream).id))
         consumers.get(upstream).push(key);
@@ -522,12 +727,15 @@ export function buildPlan({
       identity,
       policy,
       workflows,
+      localSources,
+      resolvedActions,
       changes,
       force,
       validationFallback,
       canEnforce,
     }),
     fullReasons,
+    resolvedActions,
     jobs: decisions,
     limitations: [
       "Input completeness is an owner declaration, not inferred proof.",
@@ -628,6 +836,67 @@ export function planRepository(options) {
       git(root, ["show", baseSha + ":.ci-planner.json"], 64 * 1024),
     );
   }
+  const localEntries = entries.filter((entry) =>
+    /(?:^|\/)action\.ya?ml$/.test(entry.path),
+  );
+  if (localEntries.length > 500)
+    throw Error("Too many local action definitions");
+  const localSources = { ...workflows };
+  let localBytes = 0;
+  for (const entry of localEntries) {
+    localSources[entry.path] = null;
+    if (entry.type !== "blob" || !["100644", "100755"].includes(entry.mode))
+      continue;
+    const source = git(root, ["show", target + ":" + entry.path], 256 * 1024);
+    localBytes += Buffer.byteLength(source);
+    if (localBytes > 2 * 1024 * 1024)
+      throw Error("Local action source budget exceeded");
+    localSources[entry.path] = source;
+  }
+  const trustedPolicy = readPolicy(policy),
+    resolvedActions = {};
+  const read = options.readAction ?? githubRead;
+  const references = new Set();
+  for (const source of Object.values({ ...workflows, ...localSources })) {
+    if (typeof source !== "string") continue;
+    const doc = parseDocument(source);
+    if (doc.errors.length || doc.warnings.length) continue;
+    visitYaml(doc, {
+      Pair(_, pair) {
+        if (pair.key?.value === "uses" && typeof pair.value?.value === "string")
+          references.add(pair.value.value);
+      },
+    });
+  }
+  if (references.size > 200) throw Error("Action resolution budget exceeded");
+  const resolutionStarted = Date.now();
+  let resolutionReads = 0;
+  for (const reference of [...references].sort()) {
+    const m =
+      /^([A-Za-z0-9-]+)\/([A-Za-z0-9_.-]+)(?:\/[A-Za-z0-9_./-]+)?@([A-Za-z0-9_.\/-]+)$/.exec(
+        reference,
+      );
+    if (
+      !m ||
+      SHA.test(m[3]) ||
+      !trustedPolicy.allowActionPublishers?.some(
+        (p) => p.toLowerCase() === m[1].toLowerCase(),
+      )
+    )
+      continue;
+    if (resolutionReads >= 20 || Date.now() - resolutionStarted > 15000)
+      continue;
+    resolutionReads++;
+    try {
+      const response = read(
+        "repos/" + m[1] + "/" + m[2] + "/commits/" + encodeURIComponent(m[3]),
+      );
+      if (SHA.test(response?.sha ?? ""))
+        resolvedActions[reference] = response.sha;
+    } catch {
+      /* Unavailable resolution retains the job. */
+    }
+  }
   const delta = git(root, [
     "diff",
     "--no-ext-diff",
@@ -645,5 +914,13 @@ export function planRepository(options) {
     if (delta[i + 1] === undefined) throw Error("Incomplete Git change");
     changes.push({ status: delta[i], path: delta[i + 1] });
   }
-  return buildPlan({ ...options, policy, workflows, changes, verifiedMerge });
+  return buildPlan({
+    ...options,
+    policy,
+    workflows,
+    changes,
+    verifiedMerge,
+    localSources,
+    resolvedActions,
+  });
 }

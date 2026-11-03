@@ -166,3 +166,25 @@ test("init CLI previews by default and writes only with the explicit flag", (t) 
     1,
   );
 });
+
+test("policy proposal includes actual source and script directories while leaving completeness for owner review", (t) => {
+  const f = fixture(t, {
+    ...baseFiles(),
+    [workflow]: source,
+    "scripts/check.mjs": "// checked",
+    "docs/guide.md": "# Guide",
+    "README.md": "# Readme",
+  });
+  const result = initializeRepository({ root: f.root }),
+    policy = JSON.parse(
+      result.files.find((file) => file.path === ".ci-planner.json").content,
+    );
+  assert.equal(policy.mode, "shadow");
+  assert(policy.ignored.includes("docs/**"));
+  const job = policy.jobs[workflow + "#unit"];
+  assert(job.inputs.includes("src/**"));
+  assert(job.inputs.includes("test/**"));
+  assert(job.inputs.includes("scripts/**"));
+  assert.equal(job.inputsComplete, false);
+  assert(!job.inputs.includes("**"));
+});

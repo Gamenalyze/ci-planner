@@ -4,6 +4,7 @@
  * @module audit
  */
 import fs from "node:fs";
+import { readJSONFile } from "./evidence.mjs";
 import { validRepository } from "./validation.mjs";
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
@@ -34,6 +35,7 @@ const jobKeys = [
   "conclusion",
   "started_at",
   "completed_at",
+  "labels",
 ];
 const stepKeys = [
   "number",
@@ -178,7 +180,26 @@ function interval(job) {
  * @param {object} snapshot Untrusted metadata snapshot, bounded by the CLI before parsing.
  * @returns {object} Audit report; savings and billing values deliberately remain null.
  */
-export function auditSnapshot(snapshot) {
+export function auditSnapshot(snapshot, { rates = null } = {}) {
+  if (
+    rates !== null &&
+    (!rates ||
+      !/^[A-Z]{3}$/.test(rates.currency ?? "") ||
+      !rates.perMinute ||
+      typeof rates.perMinute !== "object" ||
+      Array.isArray(rates.perMinute) ||
+      Object.keys(rates.perMinute).length > 100 ||
+      Object.entries(rates.perMinute).some(
+        ([label, value]) =>
+          !label || label.length > 100 || !Number.isFinite(value) || value < 0,
+      ))
+  )
+    throw Error(
+      "Expected currency and bounded nonnegative perMinute runner rates",
+    );
+  let ratedWorkerSeconds = 0,
+    unratedWorkerSeconds = 0,
+    estimatedAmount = 0;
   if (
     snapshot?.schemaVersion !== 1 ||
     !validRepository(snapshot.repository) ||
@@ -223,7 +244,33 @@ export function auditSnapshot(snapshot) {
       const span = interval(job);
       if (span === null) skippedJobs++;
       else if (span === undefined) unknownTimingJobs++;
-      else intervals.push({ job, span });
+      else {
+        intervals.push({ job, span });
+        const elapsed = (span[1] - span[0]) / 1000;
+        const labels = job.labels;
+        if (
+          labels !== undefined &&
+          (!Array.isArray(labels) ||
+            labels.length > 100 ||
+            labels.some(
+              (label) => typeof label !== "string" || label.length > 100,
+            ))
+        )
+          throw Error("Invalid runner labels");
+        const prices = rates
+          ? [
+              ...new Set(
+                (labels ?? [])
+                  .filter((label) => Object.hasOwn(rates.perMinute, label))
+                  .map((label) => rates.perMinute[label]),
+              ),
+            ]
+          : [];
+        if (prices.length === 1) {
+          ratedWorkerSeconds += elapsed;
+          estimatedAmount += (elapsed / 60) * prices[0];
+        } else unratedWorkerSeconds += elapsed;
+      }
     }
     const workerSeconds = intervals.reduce(
       (sum, { span }) => sum + (span[1] - span[0]) / 1000,
@@ -310,6 +357,37 @@ export function auditSnapshot(snapshot) {
           "Same workflow, event and head succeeded repeatedly. Compare base/merge state, inputs and environment before considering reuse.",
       });
   }
+  const byConclusion = new Map();
+  for (const run of runs) {
+    const conclusion = [
+      "success",
+      "failure",
+      "cancelled",
+      "timed_out",
+      "skipped",
+      "neutral",
+      "action_required",
+      "stale",
+      "startup_failure",
+    ].includes(run.conclusion)
+      ? run.conclusion
+      : "unknown";
+    const total = byConclusion.get(conclusion) ?? {
+      runs: 0,
+      completeRuns: 0,
+      workerSeconds: 0,
+    };
+    total.runs++;
+    total.completeRuns += Number(run.complete);
+    total.workerSeconds += run.workerSeconds;
+    byConclusion.set(conclusion, total);
+  }
+  const totalWorkerSeconds = runs.reduce(
+    (sum, run) => sum + run.workerSeconds,
+    0,
+  );
+  const cancelledWorkerSeconds =
+    byConclusion.get("cancelled")?.workerSeconds ?? 0;
   return {
     schemaVersion: 1,
     repository: snapshot.repository,
@@ -321,8 +399,30 @@ export function auditSnapshot(snapshot) {
       completeRuns: runs.filter((run) => run.complete).length,
       observedJobs: runs.reduce((sum, run) => sum + run.observedJobs, 0),
       workerSeconds: runs.reduce((sum, run) => sum + run.workerSeconds, 0),
+      byConclusion: Object.fromEntries(
+        [...byConclusion].sort(([a], [b]) => a.localeCompare(b)),
+      ),
+      cancelledWorkerSeconds,
+      cancelledWorkerShare:
+        totalWorkerSeconds > 0
+          ? cancelledWorkerSeconds / totalWorkerSeconds
+          : null,
+      estimatedCost: {
+        currency: rates?.currency ?? null,
+        amount: rates && ratedWorkerSeconds > 0 ? estimatedAmount : null,
+        ratedWorkerSeconds,
+        unratedWorkerSeconds,
+        partial: unratedWorkerSeconds > 0 || runs.some((r) => !r.complete),
+      },
       billingMinutes: null,
       estimatedSavingsSeconds: null,
+    },
+    cancellation: {
+      cause: "unknown",
+      recommendation:
+        cancelledWorkerSeconds > 0
+          ? "Inspect concurrency cancel-in-progress and successive pushes. If superseding pushes are confirmed, evaluate a 30–60 second debounce or a cheap metadata gate before expensive jobs. Cancellation metadata alone does not establish cause or savings."
+          : null,
     },
     runs: runs.sort((a, b) => a.id - b.id),
     findings,
@@ -337,7 +437,7 @@ export function auditSnapshot(snapshot) {
 const HELP =
   "Read-only CI audit (Node.js, no model or service required)\n\n" +
   "  ci-planner audit --repository OWNER/REPO [--workflow ci.yml] [--branch main] [--limit 20] [--snapshot]\n" +
-  "  ci-planner audit --input snapshot.json\n\n" +
+  "  ci-planner audit --input snapshot.json [--rates rates.json]\n\n" +
   "Live mode uses authenticated gh GET requests (at most 20 runs, 500 jobs per run).\n" +
   "--snapshot emits replayable metadata instead of the audit. Output is JSON on stdout.\n" +
   "Offline mode reads one snapshot (up to 32 MiB). No files or CI settings are changed.\n" +
@@ -357,6 +457,7 @@ export async function main(args) {
         "--limit",
         "--input",
         "--snapshot",
+        "--rates",
       ].includes(key) ||
       Object.hasOwn(options, key)
     )
@@ -371,7 +472,9 @@ export async function main(args) {
   }
   let snapshot;
   if (options["--input"]) {
-    if (Object.keys(options).length !== 1)
+    if (
+      Object.keys(options).some((key) => !["--input", "--rates"].includes(key))
+    )
       throw Error("--input cannot be combined with live options");
     const info = fs.statSync(options["--input"]);
     if (!info.isFile() || info.size > MAX_INPUT_BYTES)
@@ -390,7 +493,9 @@ export async function main(args) {
           : Number(options["--limit"]),
     });
   }
-  const report = auditSnapshot(snapshot);
+  const report = auditSnapshot(snapshot, {
+    rates: options["--rates"] ? readJSONFile(options["--rates"]) : null,
+  });
   return (
     JSON.stringify(options["--snapshot"] ? snapshot : report, null, 2) + "\n"
   );

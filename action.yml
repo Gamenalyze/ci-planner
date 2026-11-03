@@ -1,5 +1,5 @@
 name: CI Planner
-description: Free, conservative pull request plans with shadow mode and run-all fallback.
+description: Free CI waste and missing-check audit for GitHub Actions, with a conservative planner.
 author: GameAnalyze
 branding:
   icon: git-pull-request

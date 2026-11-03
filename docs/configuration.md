@@ -1,4 +1,4 @@
-# Input policy reference — 0.3.0
+# Input policy reference — 0.4.0
 
 Place `.ci-planner.json` in the repository being analyzed. The planner reads its committed version from the supplied trusted base. A PR cannot use its own changed policy to enable skips.
 
@@ -52,7 +52,7 @@ Patterns also match dotfiles (src/* includes src/.env); file matching does not r
 
 ## Mandatory shared inputs
 
-The owner can add global patterns but cannot remove these defaults:
+The owner can add global patterns but cannot remove these defaults. Shared manifest/toolchain filenames match at every directory depth, including under ignored docs/**:
 
 - .github/** and .ci-planner.json
 - package.json, package-lock.json, npm-shrinkwrap.json
@@ -71,9 +71,9 @@ Additional shared inputs include Git attributes/submodules, tool versions, Go/Ca
 The following prevent a job from being skipped:
 
 - incomplete or absent input contract;
-- unpinned or dynamic action/reusable workflow reference;
+- unpinned, dynamic or unresolved action/reusable workflow reference;
 - mutable container or service image;
-- secrets, vars, inputs or GitHub context expressions;
+- secrets, vars, inputs, external env, dynamic context indexing or unmodeled GitHub/runner context expressions;
 - an environment or inherited/passed secrets.
 
 Other external state may exist. Detection of common hidden inputs is conservative help, not a complete shell or program analysis.
@@ -97,3 +97,26 @@ A job may declare controlNeeds as a list of its needs job IDs when those edges p
 Execution expressions in jobs and inherited env/defaults are checked for hidden contexts. Routing metadata such as concurrency, run-name and on does not make every job opaque; ordinary names containing words such as inputs are harmless. Stale policy job IDs produce warnings and new jobs still run. Duplicate JSON policy keys are rejected.
 
 Job and step if fields are expressions even without the usual expression delimiters. Hidden external contexts in either form keep the job fresh. Quoted terminator text inside an expression cannot hide a later secret or variable reference.
+
+## Routing facts and resolved Actions
+
+The scanner permits explicit github.event_name, github.sha, github.ref, github.ref_name, github.ref_type, github.base_ref, github.head_ref, github.event.pull_request.number, github.event.pull_request.base.sha and github.event.pull_request.head.sha routing expressions, plus simple matrix.NAME references with non-hidden matrix configuration. PR body/title, other GitHub event fields, runner contexts, bracket indexing, secrets/vars/inputs and external env remain opaque. Shell reads of common GITHUB/runner environment facts and event files, and common network commands, retain the job. These checks are bounded assistance, not shell/program analysis; inputsComplete still requires owner review of all transitive scripts.
+
+Only workflows explicitly declaring the current event enter its plan. Missing or unrecognized triggers remain conservative; branch/path/activity filters are not evaluated. PR job-level conditions may still be conditional and are not evaluated.
+
+A base-owned policy may allow Action tag resolution:
+
+```json
+{
+  "allowActionPublishers": ["actions"],
+  "actionPins": {
+    "actions/checkout@v7": "3d3c42e5aac5ba805825da76410c181273ba90b1"
+  }
+}
+```
+
+These are optional fields added to a complete policy, not a complete policy by themselves. GitHub GET resolves the ref at plan time through authenticated gh; the returned SHA must equal the base-owned pin. The plan records and hashes all resolutions. A missing pin, moved tag, unknown publisher, failed API call or invalid response retains the job. Publisher allowlisting alone is insufficient: binding a newly resolved SHA into a hash would not prove it matches an owner's validated version. Prefer full SHA refs in workflows.
+
+Local composite action metadata is read from the tested Git tree, recursively, with cycle/depth and byte bounds. Mutable nested actions, hidden contexts or unavailable metadata retain the calling job. Local reusable workflow calls stay opaque until their call inputs are modeled. Remote Actions internals are not fetched or analyzed.
+
+A controlNeeds declaration is rejected when a named dependency's outputs are used outside if conditions; bracket/dynamic needs access also prevents treating the edge as control-only. Artifact relationships and runtime data in arbitrary scripts still need owner review.
