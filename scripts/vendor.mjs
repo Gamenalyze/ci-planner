@@ -12,7 +12,10 @@ for (const name of ["acorn", "yaml"]) {
   const pkg = JSON.parse(fs.readFileSync(new URL("package.json", base)));
   const pinned = lock.packages["node_modules/" + name];
   if (
+    pkg.name !== name ||
     pkg.version !== pinned.version ||
+    pinned.resolved !== `https://registry.npmjs.org/${name}/-/${name}-${pkg.version}.tgz` ||
+    Object.keys(pkg.dependencies ?? {}).length !== 0 ||
     !pinned.integrity?.startsWith("sha512-") ||
     pkg.license !== (name === "yaml" ? "ISC" : "MIT")
   )
@@ -83,6 +86,7 @@ if (write) {
     fs.writeFileSync(new URL(name, root), bytes);
   }
 } else {
+  if (fs.lstatSync(new URL("vendor/", root)).isSymbolicLink()) throw Error("Symlinked vendor root");
   for (const name of fs.readdirSync(new URL("vendor/", root), {
     recursive: true,
   }))

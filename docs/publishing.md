@@ -26,3 +26,7 @@ Registry verification reads the exact version over HTTPS with a unique verificat
 
 
 After one successful npm upload, verification allows up to five minutes for exact-version metadata propagation, polling every five seconds and retaining each request's 20-second timeout. It never repeats the upload during that wait. Only HTTP 404 is treated as not yet visible; other failed reads remain failures. A record with differing identity or integrity still fails. Reaching the bounded visibility deadline has a distinct diagnostic from an actual byte mismatch; retry verifies immutable existing bytes.
+
+## v0.5 metadata gate
+
+Release verification also requires the exact main run's `metadata` job to succeed, alongside Node 22/24. That gate checks vendored parser/SBOM bytes and source syntax. Parser packages are pinned development dependencies used to reproduce the shipped distribution; the npm package and Action import vendored files with no runtime registry installation. Audit the development dependency graph to include those vendored parser versions.

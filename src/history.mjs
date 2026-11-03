@@ -424,7 +424,9 @@ export async function replayHistory(
                 steps[0].status !== "completed" ||
                 !["success", "failure"].includes(steps[0].conclusion)
               )
-                throw Error("Required validation step not fully attempted");
+                item.issues.push(
+                  "required-validation-step-not-fully-attempted:" + job.name,
+                );
             }
             const checkout = job.steps.filter((s) =>
               /^Run actions\/checkout@[0-9a-f]{40}$/.test(s.name),
@@ -471,7 +473,7 @@ export async function replayHistory(
             enforce: false,
           });
           item.testedSha = testedSha;
-          item.verified = true;
+          item.verified = item.issues.length === 0;
           item.matrixNames = jobs.items.map((j) => j.name);
           item.decisions = [];
           for (const [id, cfg] of Object.entries(contract.jobs)) {
@@ -492,6 +494,14 @@ export async function replayHistory(
                 if (
                   ["failure", "timed_out", "startup_failure"].includes(
                     job.conclusion,
+                  ) &&
+                  cfg.requiredSteps.some((required) =>
+                    job.steps.some(
+                      (s) =>
+                        s.name === required &&
+                        s.status === "completed" &&
+                        s.conclusion === "failure",
+                    ),
                   )
                 )
                   item.failedSuggestedSkips++;
@@ -518,16 +528,17 @@ export async function replayHistory(
             after.status !== "completed"
           ) {
             item.verified = false;
+            item.failedSuggestedSkips = 0;
             item.issues.push("run-changed-during-collection");
           }
         } catch (error) {
           item.verified = false;
+          item.failedSuggestedSkips = 0;
           item.issues.push(error.message);
         }
         if (!item.verified) {
           item.candidateJobs = 0;
           item.candidateWorkerSeconds = 0;
-          item.failedSuggestedSkips = 0;
         }
         observations.push(item);
       }

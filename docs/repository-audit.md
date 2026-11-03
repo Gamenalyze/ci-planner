@@ -24,7 +24,7 @@ Use node bin/ci-planner.mjs audit-repo when running from a clone. The command re
 | GitHub workflows                               | Workflow lint                                       |
 | No unprivileged PR entry workflow              | PR validation entry point                           |
 
-Package-specific rules initially target Node/TypeScript. Generic source, workflow and Docker signals are also reported. This is not a certification of coverage for other languages.
+Rules recognize Node/TypeScript packages, Python source roots, Go modules and explicit Dockerfile invocations. Python/Go checks retain language and directory scope; a Python suite cannot stand in for a Node package test. Generic Docker builds remain conditional for the default Dockerfile and do not cover unrelated Dockerfiles. Static invocation evidence is not certification of successful or complete coverage. See the [language examples and limits](audit-roadmap.md).
 
 ## How CI evidence is traced
 

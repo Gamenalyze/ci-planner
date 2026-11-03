@@ -251,7 +251,16 @@ export function auditRepositorySnapshot({ ref, files }) {
         continue;
       }
       if (["python", "python3"].includes(cmd) && tokens[0] === "-m") {
-        cmd = tokens[1];
+        const module = tokens[1];
+        if (
+          !["pytest", "ruff", "mypy", "compileall", "pip_audit"].includes(
+            module,
+          )
+        ) {
+          unknown(at, "unrecognized-python-module", cwd);
+          continue;
+        }
+        cmd = module === "pip_audit" ? "pip-audit" : module;
         tokens = tokens.slice(2);
       }
       let recognized = false;
@@ -338,7 +347,13 @@ export function auditRepositorySnapshot({ ref, files }) {
             at,
             weak ||
               complex ||
-              tokens.some((t) => ["--fix", "--write", "-k", "-m"].includes(t)),
+              (cmd === "pytest" &&
+                tokens.some(
+                  (t) => !["-q", "-v", "--verbose", "-ra"].includes(t),
+                )) ||
+              tokens.some((t) =>
+                ["--fix", "--write", "--exit-zero", "-k", "-m"].includes(t),
+              ),
             cmd === "pytest" || ["ruff", "mypy", "pyright"].includes(cmd)
               ? { language: "python" }
               : {},
@@ -366,6 +381,7 @@ export function auditRepositorySnapshot({ ref, files }) {
             at,
             weak ||
               complex ||
+              (atFile < 0 && !inlineFile) ||
               opts.some((t) => t === "--target" || t.startsWith("--target=")) ||
               ![".", cwd].includes(opts.at(-1)),
             { file },
@@ -450,7 +466,7 @@ export function auditRepositorySnapshot({ ref, files }) {
             "container-build",
             target,
             location,
-            conditional || !!step.with?.target,
+            conditional || !step.with?.file || !!step.with?.target,
             { file },
           );
         else unknown(location, "unresolved-dockerfile-or-context", target);
@@ -571,7 +587,9 @@ export function auditRepositorySnapshot({ ref, files }) {
           o.kind === kind &&
           (pkg === null || o.package === pkg) &&
           (scope === null || o.scope === scope) &&
-          (language === null || o.language === language) &&
+          (language === null
+            ? pkg === null || !o.language
+            : o.language === language) &&
           (!["container-build", "container-lint"].includes(kind) ||
             o.file === evidence[0]),
       ),
@@ -593,7 +611,9 @@ export function auditRepositorySnapshot({ ref, files }) {
           : (scope || "root") + ":" + language) +
         "#" +
         kind +
-        (kind === "container-build" ? ":" + evidence[0] : ""),
+        (["container-build", "container-lint"].includes(kind)
+          ? ":" + evidence[0]
+          : ""),
       check: kind,
       ...(language ? { language, scope } : {}),
       package: pkg,
@@ -686,16 +706,21 @@ export function auditRepositorySnapshot({ ref, files }) {
       );
   }
   // Language roots are independent of Node packages, including repositories with no package.json.
-  const pythonRoots = names
+  const languageNames = names.filter(
+    (n) => !/(?:^|\/)(?:node_modules|vendor|fixtures|__fixtures__)\//.test(n),
+  );
+  const pythonRoots = languageNames
     .filter((n) =>
       /(?:^|\/)(?:pyproject\.toml|setup\.py|requirements[^/]*\.txt)$/.test(n),
     )
     .map((n) => (path.posix.dirname(n) === "." ? "" : path.posix.dirname(n)));
   if (names.some((n) => n.endsWith(".py")) && !pythonRoots.length)
     pythonRoots.push("");
-  const goRoots = names
+  const goRoots = languageNames
     .filter((n) => /(?:^|\/)go\.mod$/.test(n))
     .map((n) => (path.posix.dirname(n) === "." ? "" : path.posix.dirname(n)));
+  if (languageNames.some((n) => n.endsWith(".go")) && !goRoots.length)
+    goRoots.push("");
   for (const [language, roots, extension] of [
     ["python", pythonRoots, ".py"],
     ["go", goRoots, ".go"],

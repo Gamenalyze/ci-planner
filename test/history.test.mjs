@@ -58,7 +58,7 @@ test("bounded historical replay separates known success, failed suggested skips 
     "package.json": '{"scripts":{"test":"vitest run"}}',
     "src/main.js": "export const x=1;",
     "README.md": "before",
-    [workflow]: source,
+    [workflow]: source + "      - run: node check.js\n",
     ".ci-planner.json": JSON.stringify({
       schemaVersion: 1,
       mode: "shadow",
@@ -97,7 +97,10 @@ test("bounded historical replay separates known success, failed suggested skips 
       run_attempt: 1,
       name: `tests (${n})`,
       status: "completed",
-      conclusion: variant === "failure" && i === 0 ? "failure" : "success",
+      conclusion:
+        ["failure", "partial-step"].includes(variant) && i === 0
+          ? "failure"
+          : "success",
       started_at: start,
       completed_at: end,
       labels: ["ubuntu-latest"],
@@ -107,7 +110,19 @@ test("bounded historical replay separates known success, failed suggested skips 
           number: 3,
           name: "Run npm test",
           status: "completed",
-          conclusion: variant === "failure" && i === 0 ? "failure" : "success",
+          conclusion:
+            variant === "partial-step" && i === 0 ? "failure" : "success",
+        },
+        {
+          number: 4,
+          name: "Run node check.js",
+          status: "completed",
+          conclusion:
+            i === 0 && variant === "partial-step"
+              ? "skipped"
+              : i === 0 && variant === "failure"
+                ? "failure"
+                : "success",
         },
       ],
     }));
@@ -121,15 +136,34 @@ test("bounded historical replay separates known success, failed suggested skips 
         total_count: 2,
         jobs: variant === "partial" ? jobs().slice(0, 1) : jobs(),
       };
-    return meta;
+    return {
+      ...meta,
+      conclusion: ["failure", "partial-step"].includes(variant)
+        ? "failure"
+        : "success",
+    };
   };
   const log = async () =>
     variant === "missing-log"
       ? ""
       : `2026-11-03T01:00:01Z [command]/usr/bin/git log -1 --format=%H\n2026-11-03T01:00:02Z ${merge}\n`;
+  const fullContract = {
+    workflow,
+    jobs: {
+      tests: {
+        ...contract.jobs.tests,
+        requiredSteps: ["Run npm test", "Run node check.js"],
+      },
+    },
+  };
   const replay = () =>
     replayHistory(
-      { root: f.root, repository: "owner/repo", limit: 1, contract },
+      {
+        root: f.root,
+        repository: "owner/repo",
+        limit: 1,
+        contract: fullContract,
+      },
       { read, log },
     );
   let report = await replay();
@@ -140,6 +174,11 @@ test("bounded historical replay separates known success, failed suggested skips 
   report = await replay();
   assert.equal(report.summary.failedSuggestedSkips, 1);
   assert.equal(report.summary.candidateJobs, 1);
+  variant = "partial-step";
+  report = await replay();
+  assert.equal(report.summary.unknownAttempts, 1);
+  assert.equal(report.summary.failedSuggestedSkips, 1);
+  assert.equal(report.summary.candidateWorkerSeconds, 0);
   for (const v of ["partial", "missing-log"]) {
     variant = v;
     report = await replay();

@@ -167,11 +167,17 @@ test("init CLI previews by default and writes only with the explicit flag", (t) 
   );
 });
 
-test("policy proposal includes actual source and script directories while leaving completeness for owner review", (t) => {
+test("policy proposal follows invoked scripts and imports while leaving completeness for owner review", (t) => {
   const f = fixture(t, {
     ...baseFiles(),
+    "package.json": JSON.stringify({
+      type: "module",
+      scripts: { test: "node scripts/check.mjs" },
+    }),
     [workflow]: source,
-    "scripts/check.mjs": "// checked",
+    "scripts/check.mjs": "import '../test/main.test.js';",
+    "test/main.test.js": "import {answer} from '../src/main.js';",
+    "scripts/unrelated.mjs": "export const unrelated=1;",
     "docs/guide.md": "# Guide",
     "README.md": "# Readme",
   });
@@ -182,9 +188,9 @@ test("policy proposal includes actual source and script directories while leavin
   assert.equal(policy.mode, "shadow");
   assert(policy.ignored.includes("docs/**"));
   const job = policy.jobs[workflow + "#unit"];
-  assert(job.inputs.includes("src/**"));
-  assert(job.inputs.includes("test/**"));
-  assert(job.inputs.includes("scripts/**"));
+  for (const name of ["src/main.js", "test/main.test.js", "scripts/check.mjs"])
+    assert(job.inputs.includes(name), name);
+  assert(!job.inputs.includes("scripts/unrelated.mjs"));
   assert.equal(job.inputsComplete, false);
   assert(!job.inputs.includes("**"));
 });

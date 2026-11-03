@@ -15,7 +15,7 @@ Collection reads at most 500 closed PRs, orders merged entries by merge time, th
 
 `--fetch` explicitly permits fetching validated object IDs from the named GitHub repository. Without it, objects must already exist locally. No repository-provided scripts or hooks run during analysis. The tested commit must have the exact PR head as its second parent; the first parent determines the historical trusted base policy. The current policy is not retroactively asserted over old history.
 
-Candidate successful-job worker time, failed suggested skips, and unknown attempts are separate fields. A checked-out merge and successful named steps establish bounded execution observations, not test quality, all possible runtime inputs or absence of subsequent arbitrary code effects. Zero observed failed skips in a sample cannot certify enforcement safety. Worker time is not workflow elapsed time, billed cost or realized savings.
+Candidate successful-job worker time, failed suggested skips, and unknown attempts are separate fields. A confirmed failing required step can remain an observed failed suggested skip even when later required steps were skipped and the attempt is incomplete; that incomplete attempt contributes no candidate savings. A checked-out merge and successful named steps establish bounded execution observations, not test quality, all possible runtime inputs or absence of subsequent arbitrary code effects. Zero observed failed skips in a sample cannot certify enforcement safety. Worker time is not workflow elapsed time, billed cost or realized savings.
 
 ## Consume affected tests
 
@@ -33,7 +33,7 @@ The [single-package example](../examples/affected-tests-consumer/package.json) c
 
 `init` follows literal package scripts and Node entry imports and proposes per-job scopes. It records the invocation/import basis and uncertainty. Opaque wrappers, unresolved arguments and actions retain broad inventory scopes. All proposed job contracts stay `inputsComplete: false` in shadow mode.
 
-`audit-repo` also recognizes Python roots, Go modules and repositories containing only Dockerfiles. Python examples include `python -m pytest`, `ruff check` and `python -m pip-audit`; Go examples include `go test ./...`, `go vet ./...`, `go build ./...` and `govulncheck ./...`. Partial invocations and masked failures remain conditional. Unknown wrappers remain unverified. Container build/lint evidence binds the explicit Dockerfile; one generic build cannot cover every Dockerfile. `covered` means a recognized blocking invocation, never passing CI or complete language coverage.
+`audit-repo` also recognizes Python roots, Go modules and repositories containing only Dockerfiles. Python examples include `python -m pytest`, `ruff check` and `python -m pip_audit`; Go examples include `go test ./...`, `go vet ./...`, `go build ./...` and `govulncheck ./...`. Partial invocations and masked failures remain conditional. Unknown wrappers remain unverified. Container build/lint evidence binds the explicit Dockerfile; one generic build cannot cover every Dockerfile. `covered` means a recognized blocking invocation, never passing CI or complete language coverage.
 
 ## Parser inventory and early gate
 

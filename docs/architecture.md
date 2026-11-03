@@ -81,7 +81,7 @@ Further work includes complete language-aware dependency analysis, automatic per
 
 ## Repository completeness audit
 
-The repository-audit module compares Node/TypeScript signals with traced PR invocations. It follows package scripts, simple shell wrappers, local reusable workflows and composite actions. Reports distinguish covered, conditional, unverified and missing checks and retain evidence locations. See [the full guide](repository-audit.md). This analysis does not change selection policy or add jobs automatically.
+The repository-audit module compares Node/TypeScript, Python, Go and explicit Dockerfile signals with traced PR invocations. It follows package scripts, simple shell wrappers, local reusable workflows and composite actions. Reports distinguish covered, conditional, unverified and missing checks and retain evidence locations. See [the full guide](repository-audit.md). This analysis does not change selection policy or add jobs automatically.
 
 ## Setup and publication boundaries
 
@@ -99,3 +99,7 @@ The fix publisher regenerates its proposal from Git, requires the exact remote d
 | attestValidation(options, read?)                                             | Trusted tested commit/environment/full-run assertions, signing-key file and live GET transport | Signed Ed25519 receipt; forbidden in PR contexts.                                   |
 | verifyReuse(options, read?)                                                  | Receipt, trusted pre-push base, target commit/environment and live GET transport               | Explicit reuse result; run=true on any uncertainty.                                 |
 | advisePerformance(snapshot)                                                  | Bounded run/job/step and optional instrumented cache metadata                                  | Timing review prompts, unknown or observed cache hit rate, null savings/billing.    |
+
+## Advisory replay and static test selection
+
+`replayHistory` independently collects bounded merged-PR run attempts and checkout log observations under an explicit owner-reviewed workflow/matrix/required-step contract. `selectAffectedTests` returns conservative default JavaScript ESM test selection and a consumer-ready matrix. Neither module grants enforcement authority or infers complete job inputs. `suggestJobInputs` follows literal invocations/imports and retains broad scopes when evidence is opaque. See the [contracts and executable consumer](audit-roadmap.md). Git object readers share SHA-1/SHA-256 and workflow/option boundaries; GitHub Action pins remain SHA-1.

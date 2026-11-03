@@ -59,7 +59,7 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run consumer:smoke
-      - run: npm audit --omit=dev --audit-level=high
+      - run: npm audit --audit-level=high
       - name: Exercise the shipped Action against this repository
         uses: ./
         id: self-plan

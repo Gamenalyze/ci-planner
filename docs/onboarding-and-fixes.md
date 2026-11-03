@@ -70,3 +70,7 @@ Rollback removes only the generated workflow. The original CI remains intact.
 - Public functions and trust boundaries carry source annotations. Tests cover dirty state, policy preservation, symlink refusal, graph errors, source isolation, base drift, concurrent publication and partial API responses.
 
 In 0.4.0, init proposes source and script directories found in the committed inventory, package/config files, and common documentation ignores. Documentation explicitly referenced by package scripts, or included through npm pack, is kept as suggested input too. Proposals remain broad: all jobs share the conservative discovered scope and every inputsComplete stays false. Review transitive imports, fixtures, generated/runtime inputs and the proposed ignores before narrowing each job. This is an onboarding draft, not proof of complete ownership.
+
+## Per-job proposals
+
+Setup now suggests scopes from each job's literal package scripts, Node entry points and static imports. It shows whether the basis is invocation/import evidence or a broad inventory fallback. Unresolved wrappers, actions and runtime inputs keep broad scopes. All proposals remain incomplete shadow contracts and require owner review; they do not change the existing workflow. See [the scope contract](audit-roadmap.md).

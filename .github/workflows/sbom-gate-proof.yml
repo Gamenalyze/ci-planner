@@ -1,6 +1,5 @@
 name: SBOM fail-fast proof
 on:
-  pull_request:
   workflow_dispatch:
     inputs:
       inject-drift:
@@ -23,7 +22,7 @@ jobs:
           package-manager-cache: false
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Inject deliberate inventory drift
-        if: github.event_name == 'pull_request' || inputs.inject-drift
+        if: inputs.inject-drift
         run: printf '\n// deliberate fail-fast proof\n' >> vendor/acorn/dist/acorn.mjs
       - name: Verify exact vendored bytes and SBOM
         run: npm run sbom:check

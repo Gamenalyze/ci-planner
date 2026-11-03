@@ -25,10 +25,15 @@ test("Python-only roots have recognized, conditional, opaque and missing evidenc
   };
   const covered = audit(
     files,
-    "python -m pytest\nruff check .\npython -m pip-audit",
+    "python -m pytest\nruff check .\npython -m pip_audit",
   );
   for (const k of ["tests", "lint", "dependency-audit"])
     assert.equal(find(covered, k, "python").status, "covered", k);
+  assert.notEqual(
+    find(audit(files, "python -m pip-audit"), "dependency-audit", "python")
+      .status,
+    "covered",
+  );
   assert.equal(
     find(audit(files, "pytest -k unit"), "tests", "python").status,
     "conditional",
@@ -82,7 +87,10 @@ test("Docker-only rules bind each explicit Dockerfile; generic, target and maske
     Dockerfile: "FROM scratch",
     "ops/Dockerfile": "FROM scratch",
   };
-  const result = audit(files, "docker build .\nhadolint Dockerfile");
+  const result = audit(
+    files,
+    "docker build -f Dockerfile .\nhadolint Dockerfile",
+  );
   const checks = result.checks.filter((c) => c.check === "container-build");
   assert.equal(
     checks.find((c) => c.repositoryEvidence[0] === "Dockerfile").status,
@@ -111,4 +119,22 @@ test("Docker-only rules bind each explicit Dockerfile; generic, target and maske
       .status,
     "unverified",
   );
+});
+
+test("Python tests do not stand in for a Node package's JavaScript suite", () => {
+  const result = audit(
+    {
+      "package.json": '{"scripts":{"test":"vitest run"}}',
+      "src/a.js": null,
+      "src/a.py": null,
+    },
+    "python -m pytest",
+  );
+  assert.equal(
+    result.checks.find(
+      (c) => c.check === "tests" && c.package === "package.json",
+    ).status,
+    "missing",
+  );
+  assert.equal(find(result, "tests", "python").status, "covered");
 });

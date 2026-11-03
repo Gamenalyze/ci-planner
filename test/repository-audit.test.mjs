@@ -296,5 +296,13 @@ test("distinct Dockerfiles keep distinct findings and generic builds remain cond
   const findings = r.checks.filter((c) => c.check === "container-build");
   assert.equal(findings.length, 2);
   assert.equal(new Set(findings.map((c) => c.id)).size, 2);
-  assert(findings.every((c) => c.status === "conditional"));
+  assert.equal(
+    findings.find((c) => c.repositoryEvidence[0] === "Dockerfile").status,
+    "conditional",
+  );
+  assert.equal(
+    findings.find((c) => c.repositoryEvidence[0] === "services/api/Dockerfile")
+      .status,
+    "missing",
+  );
 });
