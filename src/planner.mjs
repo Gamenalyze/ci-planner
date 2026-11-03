@@ -843,14 +843,19 @@ export function planRepository(options) {
     throw Error("Too many local action definitions");
   const localSources = { ...workflows };
   let localBytes = 0;
-  for (const entry of localEntries) {
+  for (const entry of localEntries.slice(0, 500)) {
     localSources[entry.path] = null;
     if (entry.type !== "blob" || !["100644", "100755"].includes(entry.mode))
       continue;
-    const source = git(root, ["show", target + ":" + entry.path], 256 * 1024);
+    if (localBytes >= 2 * 1024 * 1024) continue;
+    let source;
+    try {
+      source = git(root, ["show", target + ":" + entry.path], 256 * 1024);
+    } catch {
+      continue;
+    } // Unavailable/oversized metadata keeps its calling job opaque.
+    if (localBytes + Buffer.byteLength(source) > 2 * 1024 * 1024) continue;
     localBytes += Buffer.byteLength(source);
-    if (localBytes > 2 * 1024 * 1024)
-      throw Error("Local action source budget exceeded");
     localSources[entry.path] = source;
   }
   const trustedPolicy = readPolicy(policy),
@@ -868,10 +873,9 @@ export function planRepository(options) {
       },
     });
   }
-  if (references.size > 200) throw Error("Action resolution budget exceeded");
   const resolutionStarted = Date.now();
   let resolutionReads = 0;
-  for (const reference of [...references].sort()) {
+  for (const reference of [...references].sort().slice(0, 200)) {
     const m =
       /^([A-Za-z0-9-]+)\/([A-Za-z0-9_.-]+)(?:\/[A-Za-z0-9_./-]+)?@([A-Za-z0-9_.\/-]+)$/.exec(
         reference,

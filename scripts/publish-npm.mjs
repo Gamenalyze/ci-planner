@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { verifyReleaseCI, validReleaseSource } from "./release.mjs";
 import { pathToFileURL } from "node:url";
 const registry = "https://registry.npmjs.org";
 const execute = (program, args) =>
@@ -26,18 +27,13 @@ export async function publishNpm() {
   const repository = "Gamenalyze/ci-planner";
   if (
     process.env.GITHUB_REPOSITORY !== repository ||
-    process.env.GITHUB_REF !== "refs/heads/main" ||
     !["workflow_run", "workflow_dispatch"].includes(
       process.env.GITHUB_EVENT_NAME,
     )
   )
     throw Error("npm publication requires the canonical main release workflow");
   const sha = execute("git", ["rev-parse", "HEAD"]);
-  if (
-    sha !== process.env.RELEASE_COMMIT ||
-    sha !== process.env.GITHUB_SHA ||
-    get(`repos/${repository}/branches/main`).commit?.sha !== sha
-  )
+  if (sha !== process.env.RELEASE_COMMIT || sha !== process.env.GITHUB_SHA)
     throw Error("npm source differs from canonical current release commit");
   const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
   if (
@@ -45,6 +41,42 @@ export async function publishNpm() {
     !/^\d+\.\d+\.\d+$/.test(pkg.version)
   )
     throw Error("Unexpected npm package");
+  const event = JSON.parse(
+    fs.readFileSync(process.env.GITHUB_EVENT_PATH, "utf8"),
+  );
+  const runId =
+    process.env.GITHUB_EVENT_NAME === "workflow_run"
+      ? event.workflow_run?.id
+      : Number(process.env.RELEASE_CI_RUN_ID);
+  if (!Number.isSafeInteger(runId) || runId < 1)
+    throw Error("Successful main CI identity required");
+  const run = get(`repos/${repository}/actions/runs/${runId}`);
+  const jobs = get(
+    `repos/${repository}/actions/runs/${runId}/attempts/${run.run_attempt}/jobs?per_page=100`,
+  );
+  verifyReleaseCI(run, jobs, repository, sha);
+  const validSource = () =>
+    validReleaseSource(
+      {
+        sha,
+        mainSha: get(`repos/${repository}/branches/main`).commit?.sha,
+        event: process.env.GITHUB_EVENT_NAME,
+        ref: process.env.GITHUB_REF,
+        version: pkg.version,
+      },
+      (a, b) => {
+        try {
+          execute("git", ["merge-base", "--is-ancestor", a, b]);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+    );
+  if (!validSource())
+    throw Error(
+      "Invalid source; retry an older release from its verified version tag",
+    );
   const tag = "v" + pkg.version;
   const release = get(`repos/${repository}/releases/tags/${tag}`);
   if (release.draft || release.prerelease)
@@ -105,8 +137,7 @@ export async function publishNpm() {
   };
   let published = metadata();
   if (!published) {
-    if (get(`repos/${repository}/branches/main`).commit?.sha !== sha)
-      throw Error("Main advanced before npm publishing");
+    if (!validSource()) throw Error("Main advanced before npm publishing");
     // In hosted CI npm obtains an OIDC token from the configured trusted publisher.
     execute("npm", [
       "publish",

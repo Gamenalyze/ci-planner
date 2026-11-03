@@ -80,6 +80,52 @@ const git = (...args) =>
     timeout: 30000,
     stdio: ["ignore", "pipe", "pipe"],
   }).trim();
+/** Shared release and npm proof; a failed Marketplace lookup cannot bypass CI. */
+export function verifyReleaseCI(run, jobs, repository, sha) {
+  if (
+    repository !== "Gamenalyze/ci-planner" ||
+    run.repository?.full_name !== repository ||
+    run.head_repository?.full_name !== repository ||
+    run.event !== "push" ||
+    run.path !== ".github/workflows/ci.yml" ||
+    run.head_branch !== "main" ||
+    run.status !== "completed" ||
+    run.conclusion !== "success" ||
+    !shaPattern.test(sha) ||
+    run.head_sha !== sha
+  )
+    throw Error("Release requires the exact successful canonical main push CI");
+  if (
+    jobs.total_count !== jobs.jobs?.length ||
+    !["validate (22)", "validate (24)"].every(
+      (name) =>
+        jobs.jobs.filter(
+          (job) =>
+            job.name === name &&
+            job.status === "completed" &&
+            job.conclusion === "success",
+        ).length === 1,
+    )
+  )
+    throw Error("Both Node validation lanes must succeed");
+}
+export function validReleaseSource(
+  { sha, mainSha, event, ref, version },
+  isAncestor,
+) {
+  if (!shaPattern.test(sha ?? "") || !shaPattern.test(mainSha ?? ""))
+    return false;
+  if (sha === mainSha)
+    return (
+      ref === "refs/heads/main" ||
+      (event === "workflow_dispatch" && ref === "refs/tags/v" + version)
+    );
+  return (
+    event === "workflow_dispatch" &&
+    ref === "refs/tags/v" + version &&
+    isAncestor(sha, mainSha)
+  );
+}
 export async function release() {
   const repository = process.env.GITHUB_REPOSITORY;
   if (repository !== "Gamenalyze/ci-planner")
@@ -94,40 +140,36 @@ export async function release() {
   if (!Number.isSafeInteger(runId) || runId < 1)
     throw Error("A successful main CI run is required");
   const run = get(`repos/${repository}/actions/runs/${runId}`);
-  if (
-    run.repository?.full_name !== repository ||
-    run.head_repository?.full_name !== repository ||
-    run.event !== "push" ||
-    run.path !== ".github/workflows/ci.yml" ||
-    run.head_branch !== "main" ||
-    run.status !== "completed" ||
-    run.conclusion !== "success" ||
-    !shaPattern.test(run.head_sha)
-  )
-    throw Error("Release requires successful canonical main push CI");
   const sha = git("rev-parse", "HEAD");
-  if (sha !== run.head_sha)
-    throw Error("Checkout differs from validated CI commit");
-  const main = () => get(`repos/${repository}/branches/main`).commit?.sha;
-  if (main() !== sha)
-    throw Error("Stale CI run: main has advanced; wait for its CI");
-  // An Actions run may contain a skipped validation lane; require both expected Node jobs.
   const jobs = get(
     `repos/${repository}/actions/runs/${runId}/attempts/${run.run_attempt}/jobs?per_page=100`,
   );
-  if (
-    jobs.total_count !== jobs.jobs?.length ||
-    !["validate (22)", "validate (24)"].every(
-      (name) =>
-        jobs.jobs.filter(
-          (job) =>
-            job.name === name &&
-            job.status === "completed" &&
-            job.conclusion === "success",
-        ).length === 1,
-    )
-  )
-    throw Error("Both Node validation lanes must succeed");
+  verifyReleaseCI(run, jobs, repository, sha);
+  const sourceVersion = JSON.parse(
+    fs.readFileSync("package.json", "utf8"),
+  ).version;
+  const validSource = () =>
+    validReleaseSource(
+      {
+        sha,
+        mainSha: get(`repos/${repository}/branches/main`).commit?.sha,
+        event: process.env.GITHUB_EVENT_NAME,
+        ref: process.env.GITHUB_REF,
+        version: sourceVersion,
+      },
+      (a, b) => {
+        try {
+          git("merge-base", "--is-ancestor", a, b);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+    );
+  if (!validSource())
+    throw Error(
+      "Stale source: retry the verified version tag for an older release",
+    );
   const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
   const { VERSION } = await import("../src/planner.mjs");
   const spec = releaseSpec({
@@ -195,7 +237,7 @@ export async function release() {
     );
     return;
   }
-  if (main() !== sha) throw Error("Main changed before publishing");
+  if (!validSource()) throw Error("Main changed before publishing");
   if (!current) {
     const notes = process.env.RUNNER_TEMP + "/ci-planner-release-notes.md";
     fs.writeFileSync(notes, spec.notes);

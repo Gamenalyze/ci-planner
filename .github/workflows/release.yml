@@ -47,7 +47,7 @@ jobs:
 
   publish-npm:
     needs: publish
-    if: vars.NPM_PUBLISH_ENABLED == 'true'
+    if: always() && vars.NPM_PUBLISH_ENABLED == 'true' && needs.publish.result != 'cancelled'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -69,4 +69,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_COMMIT: ${{ github.event.workflow_run.head_sha || github.sha }}
+          RELEASE_CI_RUN_ID: ${{ inputs.ci-run-id }}
         run: node scripts/publish-npm.mjs

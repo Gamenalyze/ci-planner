@@ -217,3 +217,31 @@ test("committed local composite metadata is scanned independently of dirty files
     true,
   );
 });
+
+test("oversized committed local action metadata retains its job rather than failing planning", (t) => {
+  const source = yaml().replace("- run: node --version", "- uses: ./tools/act");
+  const f = fixture(t, {
+    [workflow]: source,
+    ".ci-planner.json": JSON.stringify(policy()),
+    "tools/act/action.yml": "#" + "x".repeat(300 * 1024),
+    "README.md": "before",
+  });
+  const base = f.sha;
+  f.git("checkout", "-b", "pr");
+  f.write("README.md", "after");
+  const head = f.commit();
+  f.git("checkout", "main");
+  f.git("merge", "--no-ff", "pr", "-m", "merge");
+  const merge = f.git("rev-parse", "HEAD");
+  assert.equal(
+    planRepository({
+      root: f.root,
+      baseSha: base,
+      headSha: head,
+      mergeSha: merge,
+      enforce: true,
+      event: "pull_request",
+    }).jobs[key].run,
+    true,
+  );
+});

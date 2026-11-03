@@ -57,3 +57,99 @@ test("npm publishing binds both checksum and registry integrity to release bytes
     /Invalid/,
   );
 });
+
+import { verifyReleaseCI, validReleaseSource } from "../scripts/release.mjs";
+test("both publication channels independently require canonical successful CI and both non-skipped Node lanes", () => {
+  const repo = "Gamenalyze/ci-planner",
+    sha = "a".repeat(40),
+    run = {
+      repository: { full_name: repo },
+      head_repository: { full_name: repo },
+      event: "push",
+      path: ".github/workflows/ci.yml",
+      head_branch: "main",
+      status: "completed",
+      conclusion: "success",
+      head_sha: sha,
+    };
+  const jobs = {
+    total_count: 2,
+    jobs: ["validate (22)", "validate (24)"].map((name) => ({
+      name,
+      status: "completed",
+      conclusion: "success",
+    })),
+  };
+  verifyReleaseCI(run, jobs, repo, sha);
+  for (const change of [
+    { event: "pull_request" },
+    { head_branch: "feature" },
+    { conclusion: "failure" },
+    { head_sha: "b".repeat(40) },
+    { head_repository: { full_name: "fork/repo" } },
+  ])
+    assert.throws(() =>
+      verifyReleaseCI({ ...run, ...change }, jobs, repo, sha),
+    );
+  assert.throws(() =>
+    verifyReleaseCI(
+      run,
+      {
+        ...jobs,
+        jobs: jobs.jobs.map((job) => ({ ...job, conclusion: "skipped" })),
+      },
+      repo,
+      sha,
+    ),
+  );
+});
+test("stale release recovery permits only an explicitly dispatched matching version tag from main history", () => {
+  const source = {
+    sha: "a".repeat(40),
+    mainSha: "b".repeat(40),
+    event: "workflow_dispatch",
+    ref: "refs/tags/v0.4.0",
+    version: "0.4.0",
+  };
+  assert.equal(
+    validReleaseSource(source, () => true),
+    true,
+  );
+  for (const change of [
+    { event: "workflow_run" },
+    { ref: "refs/heads/feature" },
+    { ref: "refs/tags/v0.3.0" },
+  ])
+    assert.equal(
+      validReleaseSource({ ...source, ...change }, () => true),
+      false,
+    );
+  assert.equal(
+    validReleaseSource(source, () => false),
+    false,
+  );
+  assert.equal(
+    validReleaseSource(
+      { ...source, mainSha: source.sha, ref: "refs/heads/main" },
+      () => false,
+    ),
+    true,
+  );
+});
+
+test("a matching version tag can also be retried while it is still main", () => {
+  const sha = "a".repeat(40);
+  assert.equal(
+    validReleaseSource(
+      {
+        sha,
+        mainSha: sha,
+        event: "workflow_dispatch",
+        ref: "refs/tags/v0.4.0",
+        version: "0.4.0",
+      },
+      () => false,
+    ),
+    true,
+  );
+});
