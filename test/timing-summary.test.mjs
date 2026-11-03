@@ -109,3 +109,11 @@ test("performance Markdown accepts the producer's aggregate job bound and trunca
   assert.match(markdown, /omitted/);
   assert(markdown.length < 96 * 1024);
 });
+
+test("missing cancellation share is displayed as unknown", () => {
+  const report = auditSnapshot(snapshot());
+  delete report.totals.cancelledWorkerShare;
+  const markdown = renderMarkdown(report);
+  assert.match(markdown, /unknown share/);
+  assert(!markdown.includes("NaN%"));
+});

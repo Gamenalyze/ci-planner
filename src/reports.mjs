@@ -210,7 +210,9 @@ function timingView(report) {
           "Cancelled runs consumed **" +
             (report.totals.cancelledWorkerSeconds / 60).toFixed(1) +
             " worker-minutes (" +
-            (report.totals.cancelledWorkerShare === null
+            (!Number.isFinite(report.totals.cancelledWorkerShare) ||
+            report.totals.cancelledWorkerShare < 0 ||
+            report.totals.cancelledWorkerShare > 1
               ? "unknown share"
               : (report.totals.cancelledWorkerShare * 100).toFixed(1) +
                 "% of observed time") +
