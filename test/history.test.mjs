@@ -1,4 +1,5 @@
 import test from "node:test";
+import fs from "node:fs";
 import assert from "node:assert/strict";
 import {
   replayHistory,
@@ -58,6 +59,16 @@ test("workflow evidence requires explicit matrix coverage, ungated jobs/steps an
     source.replace(pin, "v4"),
   ])
     assert(inspectFullWorkflow(changed, contract).length);
+});
+test("shipped legacy history contract verifies unit/syntax steps without claiming multiline packaging semantics", () => {
+  const example = JSON.parse(fs.readFileSync(new URL("../examples/history-contract.json", import.meta.url), "utf8"));
+  const legacy = source.replaceAll("tests:", "validate:") +
+    "      - run: npm run check\n      - name: Smoke-test the distributable\n        run: |\n          task_dir=$(mktemp -d)\n          npm pack --pack-destination \"$task_dir\"\n";
+  assert.deepEqual(inspectFullWorkflow(legacy, example), []);
+  const expanded = structuredClone(example);
+  expanded.jobs.validate.requiredSteps.push("Smoke-test the distributable");
+  assert(inspectFullWorkflow(legacy, expanded).includes("required-invocation-unverified:validate"));
+  assert(inspectFullWorkflow(legacy + "  metadata:\n    runs-on: ubuntu-latest\n    steps:\n      - run: npm run check\n", example).includes("unmapped-workflow-jobs"));
 });
 test("bounded historical replay separates known success, failed suggested skips and unknown attempts", async (t) => {
   const files = {
