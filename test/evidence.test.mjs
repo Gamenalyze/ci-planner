@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
-import { generateKeyPairSync } from "node:crypto";
+import { generateKeyPairSync, sign } from "node:crypto";
 import test from "node:test";
 import { fixture, cli } from "./helpers.mjs";
 import { buildPlan } from "../src/planner.mjs";
@@ -94,13 +94,31 @@ test("skip validation compares suggestions to an explicit complete full run, wit
     report = validateSkipDecisions(input);
   assert.equal(report.safe, true);
   assert.equal(report.decisions[0].candidate, "skip");
-  assert(validationAllowsPlanning(report, input.plan.policyHash, workflow));
-  assert(!validationAllowsPlanning(report, "f".repeat(64), workflow));
+  assert(
+    validationAllowsPlanning(
+      report,
+      input.plan.policyHash,
+      workflow,
+      input.plan.planHash,
+      input.plan.identity.repository,
+    ),
+  );
+  assert(
+    !validationAllowsPlanning(
+      report,
+      "f".repeat(64),
+      workflow,
+      input.plan.planHash,
+      input.plan.identity.repository,
+    ),
+  );
   assert(
     !validationAllowsPlanning(
       report,
       input.plan.policyHash,
       ".github/workflows/other.yml",
+      input.plan.planHash,
+      input.plan.identity.repository,
     ),
   );
   const failed = structuredClone(input);
@@ -114,6 +132,8 @@ test("skip validation compares suggestions to an explicit complete full run, wit
       { ...bad, safe: true, fallback: false, issues: [] },
       input.plan.policyHash,
       workflow,
+      input.plan.planHash,
+      input.plan.identity.repository,
     ),
   );
 });
@@ -390,6 +410,7 @@ async function reuseFixture(t) {
       root: f.root,
       repository: "owner/repo",
       targetSha: target,
+      baseSha: source,
       environmentHash: envHash,
       receipt,
       now,
@@ -412,6 +433,8 @@ test("reuse fails closed on missing, altered, stale, unknown-environment and dif
   const ctx = await reuseFixture(t);
   for (const override of [
     { receipt: null },
+    { baseSha: undefined },
+    { baseSha: a },
     { environmentHash: undefined },
     { environmentHash: "e".repeat(64) },
     { now: now + 3601000 },
@@ -655,5 +678,261 @@ test("failed or absent feedback forces all plan jobs without weakening owner enf
   assert(guarded.jobs[key].run);
   assert(guarded.fullReasons.includes("skip-validation-requires-full-run"));
   assert.notEqual(normal.planHash, guarded.planHash);
+  const shadow = JSON.parse(
+    execFileSync(
+      process.execPath,
+      args.filter((arg) => arg !== "--enforce"),
+      { encoding: "utf8" },
+    ),
+  );
+  const input = observation();
+  input.plan = shadow;
+  input.testedSha = merge;
+  input.snapshot.runs[0].head_sha = head;
+  const feedbackFile = path.join(f.root, "feedback.json");
+  fs.writeFileSync(feedbackFile, JSON.stringify(validateSkipDecisions(input)));
+  const validated = JSON.parse(
+    execFileSync(
+      process.execPath,
+      [...args, "--validation-input", feedbackFile],
+      { encoding: "utf8" },
+    ),
+  );
+  assert.equal(
+    validated.jobs[key].run,
+    false,
+    "exact shadow feedback must match an enforce-mode request",
+  );
   assert.equal(policy.mode, "shadow");
+});
+
+test("a key introduced by the merged PR cannot authorize its own reuse receipt", async (t) => {
+  const ctx = await reuseFixture(t);
+  const attacker = generateKeyPairSync("ed25519");
+  const contractPath = ".ci-planner-reuse.json";
+  const cfg = JSON.parse(ctx.f.git("show", ctx.target + ":" + contractPath));
+  cfg.publicKeys = [attacker.publicKey.export({ type: "spki", format: "pem" })];
+  ctx.f.git("checkout", "-b", "attacker");
+  ctx.f.write(contractPath, JSON.stringify(cfg));
+  const source = ctx.f.commit();
+  ctx.f.git("checkout", "main");
+  ctx.f.write(contractPath, JSON.stringify(cfg));
+  ctx.f.git("add", contractPath);
+  ctx.f.git("commit", "-m", "squash reviewed change");
+  const target = ctx.f.git("rev-parse", "HEAD");
+  const statement = {
+    ...ctx.receipt.statement,
+    runHeadSha: source,
+    testedSha: source,
+    treeSha: commitTree(ctx.f.root, source),
+  };
+  const signature = sign(
+    null,
+    Buffer.from("ci-planner-validation-v1\n" + JSON.stringify(statement)),
+    attacker.privateKey,
+  ).toString("base64");
+  const read = async (url) => {
+    const value = await ctx.read(url);
+    if (url.endsWith("branches/main")) value.commit.sha = target;
+    if (url.endsWith("runs/1")) value.head_sha = source;
+    return value;
+  };
+  assert.equal(
+    (
+      await verifyReuse(
+        {
+          ...ctx.options,
+          targetSha: target,
+          baseSha: ctx.target,
+          receipt: { ...ctx.receipt, statement, signature },
+        },
+        read,
+      )
+    ).run,
+    true,
+  );
+});
+
+test("skipped steps cannot satisfy signed full-run reuse", async (t) => {
+  const ctx = await reuseFixture(t);
+  const read = async (url) => {
+    const value = await ctx.read(url);
+    if (url.includes("/jobs?")) value.jobs[0].steps[0].conclusion = "skipped";
+    return value;
+  };
+  assert.equal((await verifyReuse(ctx.options, read)).run, true);
+  const previous = process.env.GITHUB_EVENT_NAME;
+  delete process.env.GITHUB_EVENT_NAME;
+  try {
+    await assert.rejects(
+      attestValidation(ctx.signOptions, read),
+      /Every expected job/,
+    );
+  } finally {
+    if (previous !== undefined) process.env.GITHUB_EVENT_NAME = previous;
+  }
+});
+
+test("large lockfiles and generated source stay visible without aborting dependency discovery", (t) => {
+  const f = fixture(t, {
+    "package.json": '{"name":"example"}',
+    "src/index.ts": "export const value = 1;",
+    "package-lock.json": JSON.stringify({ padding: "x".repeat(600 * 1024) }),
+    "src/openapi.ts": "//" + "x".repeat(300 * 1024),
+  });
+  const snapshot = readDependencySnapshot({ root: f.root });
+  assert.equal(snapshot.files["package-lock.json"], null);
+  assert.equal(snapshot.files["src/openapi.ts"], null);
+  assert.equal(snapshot.files["src/index.ts"], "export const value = 1;");
+  const report = discoverDependencies(snapshot);
+  for (const name of ["package-lock.json", "src/openapi.ts"])
+    assert(
+      report.warnings.some(
+        (w) => w.file === name && w.reason === "oversized-text-file",
+      ),
+    );
+  assert(report.packages.every((p) => p.inputsComplete === false));
+});
+
+test("source budget exhaustion keeps the graph partial and preserves manifest facts", (t) => {
+  const files = { "package.json": '{"name":"bounded-example"}' };
+  for (let i = 0; i < 66; i++)
+    files["src/generated-" + i + ".ts"] = "//" + "x".repeat(256 * 1024 - 2);
+  const f = fixture(t, files),
+    snapshot = readDependencySnapshot({ root: f.root });
+  assert(snapshot.unreadable.some((u) => u.reason === "source-byte-budget"));
+  const report = discoverDependencies(snapshot);
+  assert(report.packages.some((p) => p.name === "bounded-example"));
+  assert(report.unreadableFiles > 0);
+  assert(report.packages.every((p) => p.inputsComplete === false));
+});
+
+test("feedback must match the repository and exact shadow plan, beyond matching policy", () => {
+  const input = observation(),
+    report = validateSkipDecisions(input);
+  const expected = [
+    input.plan.policyHash,
+    workflow,
+    input.plan.planHash,
+    input.plan.identity.repository,
+  ];
+  assert(validationAllowsPlanning(report, ...expected));
+  assert(
+    !validationAllowsPlanning(
+      report,
+      expected[0],
+      expected[1],
+      "e".repeat(64),
+      expected[3],
+    ),
+  );
+  assert(
+    !validationAllowsPlanning(
+      report,
+      expected[0],
+      expected[1],
+      expected[2],
+      "other/repo",
+    ),
+  );
+});
+
+test("reuse outputs require the trusted pre-push tip and a matching unforced GitHub push payload", async (t) => {
+  const ctx = await reuseFixture(t),
+    runtime = Date.now();
+  ctx.run.jobs.items[0].started_at = new Date(runtime - 300000).toISOString();
+  ctx.run.jobs.items[0].completed_at = new Date(runtime - 60000).toISOString();
+  const previous = process.env.GITHUB_EVENT_NAME;
+  delete process.env.GITHUB_EVENT_NAME;
+  let receipt;
+  try {
+    receipt = await attestValidation(
+      { ...ctx.signOptions, now: runtime },
+      ctx.read,
+    );
+  } finally {
+    if (previous !== undefined) process.env.GITHUB_EVENT_NAME = previous;
+  }
+  const directory = path.join(ctx.f.root, "fake-gh");
+  fs.mkdirSync(directory);
+  const api = {};
+  for (const endpoint of [
+    "repos/owner/repo",
+    "repos/owner/repo/branches/main",
+    "repos/owner/repo/actions/runs/1",
+    "repos/owner/repo/actions/runs/1/attempts/1/jobs?per_page=100&page=1",
+  ])
+    api[endpoint] = await ctx.read(endpoint);
+  const metadata = path.join(directory, "metadata.json");
+  fs.writeFileSync(metadata, JSON.stringify(api));
+  fs.writeFileSync(
+    path.join(directory, "gh"),
+    "#!" +
+      process.execPath +
+      "\nconst fs = require('node:fs'); const a = process.argv.slice(2); if (JSON.stringify(a.slice(0,5)) !== JSON.stringify(['api','--hostname','github.com','--method','GET'])) process.exit(2); const m = JSON.parse(fs.readFileSync(process.env.FIXTURE_METADATA)); if (!m[a[5]]) process.exit(3); process.stdout.write(JSON.stringify(m[a[5]]));\n",
+    { mode: 0o755 },
+  );
+  const input = path.join(directory, "receipt.json"),
+    eventFile = path.join(directory, "event.json"),
+    output = path.join(directory, "output");
+  fs.writeFileSync(input, JSON.stringify(receipt));
+  const event = {
+    before: ctx.source,
+    after: ctx.target,
+    repository: { full_name: "owner/repo" },
+    forced: false,
+    deleted: false,
+  };
+  const args = [
+    cli,
+    "reuse",
+    "--root",
+    ctx.f.root,
+    "--repository",
+    "owner/repo",
+    "--base",
+    ctx.source,
+    "--target",
+    ctx.target,
+    "--environment",
+    envHash,
+    "--input",
+    input,
+    "--github-output",
+  ];
+  const invoke = (payload) => {
+    fs.writeFileSync(eventFile, JSON.stringify(payload));
+    fs.writeFileSync(output, "");
+    const result = spawnSync(process.execPath, args, {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: directory + path.delimiter + process.env.PATH,
+        FIXTURE_METADATA: metadata,
+        GITHUB_EVENT_NAME: "push",
+        GITHUB_REPOSITORY: "owner/repo",
+        GITHUB_SHA: ctx.target,
+        GITHUB_EVENT_PATH: eventFile,
+        GITHUB_OUTPUT: output,
+      },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    return {
+      result: JSON.parse(result.stdout),
+      output: fs.readFileSync(output, "utf8"),
+    };
+  };
+  assert.equal(invoke(event).result.run, false);
+  for (const mismatch of [
+    { before: a },
+    { after: a },
+    { repository: { full_name: "other/repo" } },
+    { forced: true },
+    { deleted: true },
+    { before: null },
+  ]) {
+    const observed = invoke({ ...event, ...mismatch });
+    assert.equal(observed.result.run, true);
+    assert.match(observed.output, /^run=true\n/);
+  }
 });

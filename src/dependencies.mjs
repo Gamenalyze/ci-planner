@@ -15,7 +15,10 @@ const inside = (filename, dir) =>
   !dir || filename === dir || filename.startsWith(dir + "/");
 
 /** Package, literal import, tsconfig reference and build-config edges from one immutable tree. */
-export function discoverDependencies({ ref, files }, changes = []) {
+export function discoverDependencies(
+  { ref, files, unreadable = [] },
+  changes = [],
+) {
   if (
     !SHA.test(ref ?? "") ||
     !files ||
@@ -44,7 +47,29 @@ export function discoverDependencies({ ref, files }, changes = []) {
       16 * 1024 * 1024
   )
     throw Error("Dependency source exceeds byte bounds");
-  const warnings = [],
+  if (
+    !Array.isArray(unreadable) ||
+    unreadable.length > 20000 ||
+    unreadable.some(
+      (item) =>
+        !item ||
+        typeof item.file !== "string" ||
+        !Object.hasOwn(files, item.file) ||
+        files[item.file] !== null ||
+        ![
+          "oversized-text-file",
+          "text-file-budget",
+          "source-byte-budget",
+        ].includes(item.reason) ||
+        !Number.isSafeInteger(item.size) ||
+        item.size < 0 ||
+        (item.reason === "oversized-text-file" && item.size <= 256 * 1024),
+    )
+  )
+    throw Error("Invalid unreadable-file inventory");
+  const warnings = unreadable
+      .slice(0, 2000)
+      .map(({ file, reason, size }) => ({ file, reason, size })),
     packages = new Map(),
     byName = new Map(),
     edges = new Set();
@@ -277,6 +302,7 @@ export function discoverDependencies({ ref, files }, changes = []) {
     packages: records,
     edges: linked.map(([from, to]) => ({ from: from || ".", to: to || "." })),
     sharedInputs: names.filter((n) => config.test(n) && owner(n) === ""),
+    unreadableFiles: unreadable.length,
     warnings,
     affectedPackages: records.filter((p) => p.affected).map((p) => p.directory),
     limitations: [

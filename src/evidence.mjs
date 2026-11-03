@@ -15,8 +15,13 @@ export function gitRead(root, args, maxBuffer = 8 * 1024 * 1024) {
       timeout: 30000,
       stdio: ["ignore", "pipe", "pipe"],
     });
-  } catch {
-    throw Error("Git evidence unavailable; fetch the required commits");
+  } catch (error) {
+    if (error.code === "ENOBUFS")
+      throw Error("Git output exceeds the configured byte limit");
+    if (error.code === "ETIMEDOUT") throw Error("Git evidence read timed out");
+    throw Error(
+      "Git evidence read failed; verify repository, object and path availability",
+    );
   }
 }
 export function readJSONFile(filename, maximum = 4 * 1024 * 1024) {
@@ -57,29 +62,64 @@ export function readDependencySnapshot({ root = ".", ref = "HEAD" } = {}) {
     "--verify",
     ref + "^{commit}",
   ]).trim();
-  const entries = gitRead(root, ["ls-tree", "-r", "-z", "--full-tree", sha])
+  const entries = gitRead(root, [
+    "ls-tree",
+    "-r",
+    "-l",
+    "-z",
+    "--full-tree",
+    sha,
+  ])
     .split("\0")
     .filter(Boolean);
   if (entries.length > 20000)
     throw Error("Dependency discovery exceeds 20000 files");
+  // Read package/config facts first so a large generated tree cannot consume
+  // the bounded budget before workspace relationships are discovered.
+  const priority = (entry) => {
+    const name = entry.slice(entry.indexOf("\t") + 1);
+    if (/(?:^|\/)package\.json$/.test(name)) return 0;
+    if (/(?:^|\/)(?:tsconfig[^/]*\.json|pnpm-workspace\.yaml)$/.test(name))
+      return 1;
+    return /\.(?:[cm]?[jt]sx?)$/.test(name) ? 2 : 3;
+  };
+  entries.sort((a, b) => priority(a) - priority(b) || a.localeCompare(b));
   const files = Object.create(null);
+  const unreadable = [];
   let bytes = 0,
     reads = 0;
   for (const line of entries) {
-    const m = /^(\d+) (\w+) [0-9a-f]{40}\t([\s\S]+)$/.exec(line);
+    const m = /^(\d+) (\w+) [0-9a-f]{40}\s+(\d+|-)\t([\s\S]+)$/.exec(line);
     if (!m) throw Error("Invalid Git inventory");
-    const [, mode, type, name] = m;
+    const [, mode, type, rawSize, name] = m;
     files[name] = null;
     if (/(?:^|\/)(?:node_modules|vendor|\.git)\//.test(name)) continue;
     if (!/\.(?:[cm]?[jt]sx?|json|ya?ml)$/.test(name)) continue;
     if (!/^(?:100644|100755)$/.test(mode) || type !== "blob") continue;
-    if (++reads > 2000)
-      throw Error("Dependency discovery exceeds 2000 text files");
-    const text = gitRead(root, ["show", sha + ":" + name], 256 * 1024);
-    bytes += Buffer.byteLength(text);
-    if (bytes > 16 * 1024 * 1024)
-      throw Error("Dependency discovery exceeds 16 MiB");
+    const size = Number(rawSize);
+    if (!Number.isSafeInteger(size) || size < 0)
+      throw Error("Invalid Git blob size");
+    if (size > 256 * 1024) {
+      unreadable.push({ file: name, reason: "oversized-text-file", size });
+      continue;
+    }
+    if (reads >= 2000 || bytes + size > 16 * 1024 * 1024) {
+      unreadable.push({
+        file: name,
+        reason: reads >= 2000 ? "text-file-budget" : "source-byte-budget",
+        size,
+      });
+      continue;
+    }
+    reads++;
+    const text = gitRead(root, ["show", sha + ":" + name], 256 * 1024 + 1);
+    const decodedBytes = Buffer.byteLength(text);
+    if (decodedBytes > 256 * 1024 || bytes + decodedBytes > 16 * 1024 * 1024) {
+      unreadable.push({ file: name, reason: "source-byte-budget", size });
+      continue;
+    }
+    bytes += decodedBytes;
     files[name] = text;
   }
-  return { ref: sha, files };
+  return { ref: sha, files, unreadable };
 }

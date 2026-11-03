@@ -48,6 +48,8 @@ The renderer does not invent a savings percentage or convert raw runner time to 
 
 Tables show at most 50 rows each and report omitted counts. Cells are escaped and limited in length; output is bounded below 96 KiB. HTML, Markdown link syntax, table separators and mentions in display fields cannot inject active markup.
 
+GitHub may still autolink plain URLs and domain-like names such as www.example.com in reports and generated fix-PR bodies. Escaping Markdown link syntax is not a URL allowlist or a promise that every name stays non-clickable.
+
 Raw workflow commands and unknown payload properties are not rendered. Paths and check names can still reveal private structure. Keep reports under the repository's access controls. The tool does not claim to redact arbitrary secrets that an owner places inside names or user-supplied JSON fields.
 
 ## API
