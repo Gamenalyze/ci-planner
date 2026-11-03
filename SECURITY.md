@@ -18,7 +18,7 @@ Use the latest published version. Fixes ship through reviewed commits and versio
 
 - Planning reads committed Git objects and base-owned policy.
 - The CLI never executes the analyzed repository's scripts.
-- The Action installs only its own locked parser, with lifecycle scripts disabled.
+- The Action ships reviewed, lockfile-pinned parsers as vendored files; it performs no runtime registry installation.
 - Enforcement requires base opt-in, caller opt-in and exact base/head merge parents.
 - Hidden or mutable execution inputs retain jobs; unsupported graphs fail planning.
 - Missing outputs must make the caller run existing CI.

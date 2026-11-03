@@ -25,7 +25,7 @@ jobs:
         run: npx --yes @gamenalyze/ci-planner@0.5.0 affected --base "$BASE_SHA" --runner vitest --github-output
   tests:
     needs: select
-    if: always()
+    if: always() && !cancelled()
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
