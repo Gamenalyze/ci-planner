@@ -35,7 +35,7 @@ Use semantic versions. Keep package.json, package-lock.json, the exported engine
 Publish the Action from a tested public release. The root action.yml supplies the listing name, description and branding; README.md supplies the product guide. The software remains free under MIT. Marketplace publication does not certify the code or change runner charges.
 
 1. Merge the release PR after review and passing Node 22/24 CI, including the shipped Action and package smoke test.
-2. Draft a release at the exact tested main commit. For this patch, use tag v0.3.0 and title CI Planner v0.3.0. Copy the matching CHANGELOG.md entry into the release body.
+2. Draft a release at the exact tested main commit. For this patch, use tag v0.3.1 and title CI Planner v0.3.1. Copy the matching CHANGELOG.md entry into the release body.
 3. Select Publish this Action to the GitHub Marketplace. An organization owner must accept GitHub's Marketplace Developer Agreement if GitHub requests it; complete any sign-in or two-factor check in GitHub.
 4. Confirm that GitHub accepts the unique Action name. Choose Continuous integration as the primary category and Code quality as the secondary category when offered. Resolve any metadata errors before publishing.
 5. Publish the release, open the resulting Marketplace page, and verify that its installation instructions point to this repository and version. Record the actual listing URL only after it exists.

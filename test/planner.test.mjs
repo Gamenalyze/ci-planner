@@ -315,6 +315,89 @@ test("Git planner verifies merge parents and ignores dirty checkout content", ()
     );
   }));
 
+for (const setting of [
+  "committed-ignore",
+  "local-config-ignore",
+  "dirty-worktree-ignore",
+]) {
+  test("Gitlink changes remain visible with " + setting, () =>
+    fixture(({ root, git, write, baseSha: original }) => {
+      const modulePath = "vendor/fixture";
+      const first = git([
+        "commit-tree",
+        original + "^{tree}",
+        "-m",
+        "module version one",
+      ]);
+      const second = git([
+        "commit-tree",
+        original + "^{tree}",
+        "-p",
+        first,
+        "-m",
+        "module version two",
+      ]);
+      const scoped = policy();
+      scoped.jobs[key("tests")].inputs = [modulePath, modulePath + "/**"];
+      const modules =
+        '[submodule "fixture"]\n\tpath = ' +
+        modulePath +
+        "\n\turl = https://example.invalid/fixture.git\n";
+      write(
+        ".gitmodules",
+        modules + (setting === "committed-ignore" ? "\tignore = all\n" : ""),
+      );
+      write(".ci-planner.json", JSON.stringify(scoped));
+      git(["add", ".gitmodules", ".ci-planner.json"]);
+      git([
+        "update-index",
+        "--add",
+        "--cacheinfo",
+        "160000," + first + "," + modulePath,
+      ]);
+      git(["commit", "-m", "trusted component input contract"]);
+      const baseSha = git(["rev-parse", "HEAD"]);
+      write("README.md", "docs edit accompanying a component update");
+      git(["add", "README.md"]);
+      git([
+        "update-index",
+        "--cacheinfo",
+        "160000," + second + "," + modulePath,
+      ]);
+      git(["commit", "-m", "PR moves the gitlink"]);
+      const headSha = git(["rev-parse", "HEAD"]);
+      const mergeSha = git([
+        "commit-tree",
+        headSha + "^{tree}",
+        "-p",
+        baseSha,
+        "-p",
+        headSha,
+        "-m",
+        "tested merge",
+      ]);
+      if (setting === "local-config-ignore")
+        git(["config", "submodule.fixture.ignore", "all"]);
+      if (setting === "dirty-worktree-ignore")
+        write(".gitmodules", modules + "\tignore = all\n");
+      const plan = planRepository({
+        root,
+        baseSha,
+        headSha,
+        mergeSha,
+        enforce: true,
+      });
+      assert.equal(plan.mode, "enforce");
+      assert.equal(
+        plan.jobs[key("tests")].run,
+        true,
+        "a gitlink input changed despite local ignore settings",
+      );
+      assert.equal(plan.jobs[key("tests")].reason, "changed-job-input");
+    }),
+  );
+}
+
 test("PR policy changes cannot enable skipping and CLI outputs are bound to verified source", () =>
   fixture(({ root, git, write, commit, baseSha: originalBase }) => {
     const shadow = { ...policy(), mode: "shadow" };

@@ -1,6 +1,6 @@
 {
   "name": "@gamenalyze/ci-planner",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Free CI audits and conservative pull request plans for GitHub Actions",
   "type": "module",
   "license": "MIT",

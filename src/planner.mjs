@@ -10,7 +10,7 @@ import { parseDocument, visit as visitYaml } from "yaml";
 import { validRepository } from "./validation.mjs";
 import { uniqueJSON } from "./json.mjs";
 
-export const VERSION = "0.3.0";
+export const VERSION = "0.3.1";
 const SHA = /^[0-9a-f]{40}$/;
 const WORKFLOW = /^\.github\/workflows\/[^/\x00-\x1f]+\.ya?ml$/;
 const JOB = /^[A-Za-z_][A-Za-z0-9_-]*$/;
@@ -632,6 +632,7 @@ export function planRepository(options) {
     "diff",
     "--no-ext-diff",
     "--no-renames",
+    "--ignore-submodules=none",
     "--name-status",
     "-z",
     diffBase,

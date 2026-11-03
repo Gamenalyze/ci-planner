@@ -1,6 +1,12 @@
 # Changelog
 
-## 0.3.0 — unpublished
+## 0.3.1 — 2026-11-03
+
+- Force Git to include submodule gitlink changes regardless of ignore settings in committed or dirty .gitmodules and local .git/config. A hidden gitlink change could otherwise bypass enforce-mode input selection in v0.3.0 and earlier.
+- Add committed-ignore, local-config-ignore and dirty-worktree-ignore regression fixtures.
+- Until upgraded to a reviewed v0.3.1 commit or release, keep enforce disabled. Shadow mode still runs every check.
+
+## 0.3.0 — 2026-11-03
 
 - Harden reuse trust to the target first-parent contract and reject skipped steps.
 - Keep oversized dependency inputs as explicit unknowns instead of failing the scan; distinguish Git output bounds and missing evidence.
