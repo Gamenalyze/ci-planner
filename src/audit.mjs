@@ -35,6 +35,14 @@ const jobKeys = [
   "started_at",
   "completed_at",
 ];
+const stepKeys = [
+  "number",
+  "name",
+  "status",
+  "conclusion",
+  "started_at",
+  "completed_at",
+];
 const positiveInteger = (value) => Number.isSafeInteger(value) && value > 0;
 
 // Only GET metadata endpoints. Never fetch logs, artifacts, code or secret values.
@@ -94,6 +102,7 @@ export async function collectSnapshot(
   )
     throw Error("Invalid run list");
   const runs = [];
+  let collectedBytes = 0;
   for (const run of listed.workflow_runs) {
     if (!positiveInteger(run.id) || !positiveInteger(run.run_attempt))
       throw Error("Invalid run identity");
@@ -120,7 +129,24 @@ export async function collectSnapshot(
       if (total !== undefined && total !== data.total_count)
         throw Error("Jobs changed during collection; retry after completion");
       total = data.total_count;
-      items.push(...data.jobs.map((job) => pick(job, jobKeys)));
+      items.push(
+        ...data.jobs.map((job) => {
+          if (
+            job.steps !== undefined &&
+            (!Array.isArray(job.steps) || job.steps.length > 1000)
+          )
+            throw Error("Invalid step inventory");
+          return {
+            ...pick(job, jobKeys),
+            ...(job.steps
+              ? { steps: job.steps.map((step) => pick(step, stepKeys)) }
+              : {}),
+          };
+        }),
+      );
+      collectedBytes += Buffer.byteLength(JSON.stringify(data.jobs));
+      if (collectedBytes > MAX_INPUT_BYTES)
+        throw Error("Collected metadata exceeds 32 MiB");
       if (items.length >= total || data.jobs.length < 100) break;
     }
     runs.push({ ...pick(run, runKeys), jobs: { total_count: total, items } });

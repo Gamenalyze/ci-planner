@@ -157,7 +157,18 @@ test("collects bounded, paginated metadata for the exact latest attempt and stri
         total_count: 101,
         jobs: Array.from({ length: count }, (_, i) => ({
           ...job(calls.length * 1000 + i, 0, 1, "success", 1, 2),
-          steps: [{ run: "secret" }],
+          steps: [
+            {
+              number: 1,
+              name: "Install dependencies",
+              status: "completed",
+              conclusion: "success",
+              started_at: timestamp(0),
+              completed_at: timestamp(1),
+              run: "secret",
+              outputs: { token: "must not survive" },
+            },
+          ],
         })),
       };
     },
@@ -171,7 +182,12 @@ test("collects bounded, paginated metadata for the exact latest attempt and stri
   );
   assert.equal(snap.runs[0].jobs.items.length, 101);
   assert.equal(snap.runs[0].secret_payload, undefined);
-  assert.equal(snap.runs[0].jobs.items[0].steps, undefined);
+  assert.equal(
+    snap.runs[0].jobs.items[0].steps[0].name,
+    "Install dependencies",
+  );
+  assert.equal(snap.runs[0].jobs.items[0].steps[0].run, undefined);
+  assert.equal(snap.runs[0].jobs.items[0].steps[0].outputs, undefined);
   assert.equal(auditSnapshot(snap).totals.workerSeconds, 101);
 });
 

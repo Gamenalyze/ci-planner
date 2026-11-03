@@ -23,7 +23,7 @@ The pure buildPlan API accepts normalized data for tests and trusted adapters. D
 
 ## Data and permissions
 
-There is no hosted backend or telemetry. Git data stays on your machine or runner. Live auditing uses installed gh authentication to GET run/job metadata. It does not request logs, artifacts, source contents or secret values. It retains only listed run/job fields.
+There is no hosted backend or telemetry. Git data stays on your machine or runner. Live auditing uses installed gh authentication to GET run/job metadata. It does not request logs, artifacts, source contents or secret values. It retains bounded run/job and step name/status/timestamp metadata, never logs or step outputs.
 
 Snapshots and plan job names can still reveal private project structure. Treat them as private within your organization. Use read-only contents/Actions permissions. Never pass a write token or extra secrets to a job that checks out untrusted PR code.
 
@@ -40,3 +40,9 @@ Guided init writes only missing setup files on explicit --write, in a clean loca
 The separate fix --open-pr operation is an explicit owner-authorized remote write. It is local-only, requires local HEAD to equal the remote default branch, creates only a new generated workflow, never updates existing refs, and opens a draft PR. Its credential needs branch/workflow and PR write access; never provide it to the read-only Action or untrusted PR analysis. Opening the draft may start normal repository CI. A partial response preserves the new branch for inspection rather than deleting uncertain evidence.
 
 The optional audit-repo --add-checks flag writes a new reviewable workflow; the audit itself does not execute it. Only the owner can commit and enable that workflow. Existing CI and native runner placement are preserved.
+
+## Evidence and signing
+
+Dependency suggestions never mark input contracts complete. Full-run feedback can only inhibit normal enforcement gates. Keep observation history owner-controlled; a report digest is not a signature.
+
+Reuse requires a separate owner-controlled coordinator to attest the actual tested checkout, measured runtime and ungated full execution. PR code and dependencies must never have access to its Ed25519 private key. Do not trust unsigned artifacts or a workflow_run trigger alone. Public keys and an explicit hermetic/artifact-free contract come from the current default branch. The verifier requires a matching complete tree, runtime digest, expected job inventory, unexpired signature and live latest successful PR attempt. Missing evidence runs fresh. Never use reuse for deployment, signing or artifact-producing acceptance gates. See [the complete trust boundary](docs/evidence-and-performance.md).

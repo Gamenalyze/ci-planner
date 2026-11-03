@@ -29,6 +29,9 @@ inputs:
   audit-repository:
     description: Include static missing-check evidence in the report without changing plan decisions.
     default: "false"
+  validation-input:
+    description: Optional trusted skip-validation report path; missing or unsafe evidence forces a full run.
+    default: ""
 outputs:
   run:
     description: JSON object mapping job IDs to run booleans.
@@ -75,10 +78,12 @@ runs:
         PLANNER_ENFORCE: ${{ inputs.enforce }}
         PLANNER_SUMMARY: ${{ inputs.summary }}
         PLANNER_AUDIT: ${{ inputs.audit-repository }}
+        PLANNER_VALIDATION: ${{ inputs.validation-input }}
       run: |
         args=(plan --root "$PLANNER_ROOT" --repository "$GITHUB_REPOSITORY" --base "$PLANNER_BASE" --head "$PLANNER_HEAD" --event "$GITHUB_EVENT_NAME" --workflow "$PLANNER_WORKFLOW" --github-output)
         if [[ -n "$PLANNER_MERGE" ]]; then args+=(--merge "$PLANNER_MERGE"); fi
         if [[ "$PLANNER_ENFORCE" == true ]]; then args+=(--enforce); fi
         if [[ "$PLANNER_SUMMARY" == true ]]; then args+=(--summary); fi
         if [[ "$PLANNER_AUDIT" == true ]]; then args+=(--audit-repo); fi
+        if [[ -n "$PLANNER_VALIDATION" ]]; then args+=(--validation-input "$PLANNER_VALIDATION"); fi
         node "$GITHUB_ACTION_PATH/bin/ci-planner.mjs" "${args[@]}"

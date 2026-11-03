@@ -16,6 +16,20 @@ import { initializeRepository } from "../src/setup.mjs";
 import { previewFix, openFixPullRequest } from "../src/fix-pr.mjs";
 import { renderMarkdown } from "../src/reports.mjs";
 import { uniqueJSON } from "../src/json.mjs";
+import {
+  readJSONFile,
+  readDependencySnapshot,
+  gitRead,
+  commitTree,
+} from "../src/evidence.mjs";
+import { discoverDependencies } from "../src/dependencies.mjs";
+import {
+  validateSkipDecisions,
+  validationAllowsPlanning,
+} from "../src/skip-validation.mjs";
+import { advisePerformance } from "../src/performance.mjs";
+import { collectSnapshot } from "../src/audit.mjs";
+import { attestValidation, verifyReuse } from "../src/reuse.mjs";
 
 const help =
   "CI Planner " +
@@ -26,8 +40,13 @@ const help =
   "ci-planner init [--root DIR] [--action-ref SHA|vX.Y.Z] [--write]\n" +
   "ci-planner fix [--root DIR] [--repository OWNER/REPO --open-pr]\n" +
   "ci-planner report --input report.json\n" +
+  "ci-planner validate --input full-run-observation.json [--check]\n" +
+  "ci-planner discover [--root DIR] [--ref HEAD|SHA] [--base SHA]\n" +
+  "ci-planner advise --input snapshot.json | --repository OWNER/REPO [--workflow ci.yml] [--limit 20]\n" +
+  "ci-planner attest --repository OWNER/REPO --tested SHA --run-id ID --environment HASH --signing-key-file FILE --full-run\n" +
+  "ci-planner reuse --repository OWNER/REPO --target SHA --environment HASH --input receipt.json [--github-output]\n" +
   "ci-planner plan --base SHA --head SHA [--merge SHA] [--root DIR] [--repository OWNER/REPO]\n" +
-  "  [--event pull_request] [--workflow .github/workflows/ci.yml] [--enforce] [--force] [--github-output] [--audit-repo]\n\n" +
+  "  [--event pull_request] [--workflow .github/workflows/ci.yml] [--enforce] [--force] [--github-output] [--audit-repo] [--validation-input FILE]\n\n" +
   "Result commands accept --format json|markdown and --summary (append a GitHub job summary).\n" +
   "init/fix preview by default. --write creates local setup files; --open-pr explicitly publishes a draft fix PR.\n" +
   "Plans read committed Git objects and the policy from base. Default: shadow (all jobs run).\n" +
@@ -95,7 +114,119 @@ try {
   };
   if (command === "--help" || command === undefined) process.stdout.write(help);
   else if (command === "--version") process.stdout.write(VERSION + "\n");
-  else if (command === "audit") {
+  else if (command === "validate") {
+    const opts = parseOptions(args, ["--input"], ["--check"]);
+    const report = validateSkipDecisions(readJSONFile(opts["--input"]));
+    emit(report);
+    if (opts["--check"] && !report.safe) process.exitCode = 1;
+  } else if (command === "discover") {
+    const opts = parseOptions(args, ["--root", "--ref", "--base"]);
+    const root = opts["--root"] ?? ".",
+      snapshot = readDependencySnapshot({ root, ref: opts["--ref"] ?? "HEAD" });
+    let changes = [];
+    if (opts["--base"]) {
+      commitTree(root, opts["--base"]);
+      changes = gitRead(root, [
+        "diff",
+        "--no-ext-diff",
+        "--no-renames",
+        "--name-only",
+        "-z",
+        opts["--base"],
+        snapshot.ref,
+        "--",
+      ])
+        .split("\0")
+        .filter(Boolean);
+    }
+    emit(discoverDependencies(snapshot, changes));
+  } else if (command === "advise") {
+    const opts = parseOptions(args, [
+      "--input",
+      "--repository",
+      "--workflow",
+      "--branch",
+      "--limit",
+    ]);
+    if (opts["--input"] && Object.keys(opts).length !== 1)
+      throw Error("Offline advice cannot use live options");
+    emit(
+      advisePerformance(
+        opts["--input"]
+          ? readJSONFile(opts["--input"], 32 * 1024 * 1024)
+          : await collectSnapshot({
+              repository: opts["--repository"],
+              workflow: opts["--workflow"],
+              branch: opts["--branch"],
+              limit:
+                opts["--limit"] === undefined ? 20 : Number(opts["--limit"]),
+            }),
+      ),
+    );
+  } else if (command === "attest") {
+    const opts = parseOptions(
+      args,
+      [
+        "--root",
+        "--repository",
+        "--tested",
+        "--run-id",
+        "--environment",
+        "--signing-key-file",
+      ],
+      ["--full-run"],
+    );
+    emit(
+      await attestValidation({
+        root: opts["--root"] ?? ".",
+        repository: opts["--repository"],
+        testedSha: opts["--tested"],
+        runId: Number(opts["--run-id"]),
+        environmentHash: opts["--environment"],
+        keyFile: opts["--signing-key-file"],
+        fullRun: opts["--full-run"] === true,
+      }),
+    );
+  } else if (command === "reuse") {
+    const opts = parseOptions(
+      args,
+      ["--root", "--repository", "--target", "--environment", "--input"],
+      ["--github-output"],
+    );
+    if (
+      opts["--github-output"] &&
+      (!process.env.GITHUB_OUTPUT ||
+        process.env.GITHUB_EVENT_NAME !== "push" ||
+        process.env.GITHUB_SHA !== opts["--target"] ||
+        process.env.GITHUB_REPOSITORY !== opts["--repository"])
+    )
+      throw Error(
+        "Reuse outputs require the exact current repository push SHA and GITHUB_OUTPUT",
+      );
+    let receipt = null;
+    try {
+      receipt = readJSONFile(opts["--input"]);
+    } catch {
+      /* Missing/bad receipt always runs fresh. */
+    }
+    const result = await verifyReuse({
+      root: opts["--root"] ?? ".",
+      repository: opts["--repository"],
+      targetSha: opts["--target"],
+      environmentHash: opts["--environment"],
+      receipt,
+    });
+    emit(result);
+    if (opts["--github-output"])
+      fs.appendFileSync(
+        process.env.GITHUB_OUTPUT,
+        "run=" +
+          result.run +
+          "\nreusable=" +
+          result.reusable +
+          "\nready=true\n",
+      );
+  } else if (command === "audit") {
     const result = await audit(args);
     if (args.length === 1 && args[0] === "--help") process.stdout.write(result);
     else emit(uniqueJSON(result));
@@ -192,6 +323,7 @@ try {
           "--force",
           "--github-output",
           "--audit-repo",
+          "--validation-input",
         ].includes(key) ||
         Object.hasOwn(options, key)
       )
@@ -217,7 +349,7 @@ try {
       throw Error("Expected root workflow path");
     if (options["--github-output"] && (!workflow || !process.env.GITHUB_OUTPUT))
       throw Error("GitHub output needs a workflow path and GITHUB_OUTPUT");
-    const plan = planRepository({
+    const planOptions = {
       root: options["--root"],
       repository: options["--repository"],
       baseSha: options["--base"],
@@ -227,7 +359,20 @@ try {
         options["--event"] ?? process.env.GITHUB_EVENT_NAME ?? "pull_request",
       enforce: options["--enforce"] === true,
       force: options["--force"] === true,
-    });
+    };
+    let plan = planRepository(planOptions);
+    if (options["--validation-input"]) {
+      if (!workflow) throw Error("Validation feedback requires --workflow");
+      let feedback = null;
+      try {
+        feedback = readJSONFile(options["--validation-input"]);
+      } catch {
+        /* Require a full run. */
+      }
+      if (!validationAllowsPlanning(feedback, plan.policyHash, workflow)) {
+        plan = planRepository({ ...planOptions, validationFallback: true });
+      }
+    }
     const jobs = Object.values(plan.jobs).filter(
       (job) => !workflow || job.workflow === workflow,
     );

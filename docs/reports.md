@@ -53,3 +53,7 @@ Raw workflow commands and unknown payload properties are not rendered. Paths and
 ## API
 
 Import renderMarkdown from @gamenalyze/ci-planner/reports. It accepts a supported structured result and returns Markdown without changing that result. markdownCell escapes one bounded display cell. Both functions are annotated in the source.
+
+## Evidence reports
+
+The validate, discover, advise, attest and reuse commands also support JSON, Markdown and GitHub summaries. Reports show failed suggestions, advisory dependency scopes, timing review prompts and explicit fresh/reuse outcomes. Rendering a report never verifies its signature or grants skip authority; use the reuse verifier for that. See [evidence and performance](evidence-and-performance.md).

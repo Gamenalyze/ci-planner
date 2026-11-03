@@ -17,7 +17,11 @@
     "./check-proposals": "./src/check-proposals.mjs",
     "./reports": "./src/reports.mjs",
     "./setup": "./src/setup.mjs",
-    "./fix-pr": "./src/fix-pr.mjs"
+    "./fix-pr": "./src/fix-pr.mjs",
+    "./dependencies": "./src/dependencies.mjs",
+    "./skip-validation": "./src/skip-validation.mjs",
+    "./reuse": "./src/reuse.mjs",
+    "./performance": "./src/performance.mjs"
   },
   "files": [
     "bin/",
@@ -34,7 +38,7 @@
   ],
   "scripts": {
     "test": "node --test test/*.test.mjs",
-    "check": "node --check bin/ci-planner.mjs && node --check src/planner.mjs && node --check src/audit.mjs && node --check src/repository-audit.mjs && node --check src/json.mjs && node --check src/validation.mjs && node --check src/check-proposals.mjs && node --check src/reports.mjs && node --check src/setup.mjs && node --check src/fix-pr.mjs"
+    "check": "node --check bin/ci-planner.mjs && node --check src/planner.mjs && node --check src/audit.mjs && node --check src/repository-audit.mjs && node --check src/json.mjs && node --check src/validation.mjs && node --check src/check-proposals.mjs && node --check src/reports.mjs && node --check src/setup.mjs && node --check src/fix-pr.mjs && node --check src/evidence.mjs && node --check src/dependencies.mjs && node --check src/skip-validation.mjs && node --check src/reuse.mjs && node --check src/performance.mjs"
   },
   "dependencies": {
     "yaml": "2.9.1"
