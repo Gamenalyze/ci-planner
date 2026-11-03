@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.2 — 2026-11-03
+
+- Verify npm publication against a fresh, bounded exact-version registry record, bypassing cached not-found responses for newly created packages and versions.
+- Preserve the release checksum and registry integrity checks. Publication is still rejected if bytes differ or metadata remains unavailable; successful uploads are never overwritten on retry.
+
 ## 0.4.1 — 2026-11-03
 
 - Point the shipped GitHub Actions example to an available release version instead of the unpublished v0.3.1 label.

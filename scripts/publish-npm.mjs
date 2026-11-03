@@ -2,7 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { verifyReleaseCI, validReleaseSource } from "./release.mjs";
 import { pathToFileURL } from "node:url";
 const registry = "https://registry.npmjs.org";
@@ -22,6 +22,37 @@ export function verifyTarball(bytes, checksum, name) {
   if (checksum.trim() !== expected)
     throw Error("Release tarball checksum mismatch");
   return "sha512-" + createHash("sha512").update(bytes).digest("base64");
+}
+/** Read a fresh version record; new packages can have cached 404s at the packument URL. */
+export async function readPublishedPackage(name, version, fetcher = fetch) {
+  if (name !== "@gamenalyze/ci-planner" || !/^\d+\.\d+\.\d+$/.test(version))
+    throw Error("Unexpected npm metadata identity");
+  const url = new URL(
+    registry + "/" + name.replace("/", "%2f") + "/" + version,
+  );
+  url.searchParams.set("verification", randomUUID());
+  const response = await fetcher(url, {
+    headers: { Accept: "application/json", "Cache-Control": "no-cache" },
+    cache: "no-store",
+    signal: AbortSignal.timeout(20000),
+    redirect: "error",
+  });
+  if (response.status === 404) return null;
+  if (!response.ok || !response.body)
+    throw Error("npm registry verification unavailable");
+  const chunks = [];
+  let length = 0;
+  for await (const chunk of response.body) {
+    length += chunk.byteLength;
+    if (length > 4 * 1024 * 1024)
+      throw Error("npm registry metadata exceeds bounds");
+    chunks.push(chunk);
+  }
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    throw Error("Invalid npm registry metadata");
+  }
 }
 export async function publishNpm() {
   const repository = "Gamenalyze/ci-planner";
@@ -120,22 +151,8 @@ export async function publishNpm() {
     fs.readFileSync(tarball + ".sha256", "utf8"),
     name,
   );
-  const metadata = () => {
-    try {
-      return JSON.parse(
-        execute("npm", [
-          "view",
-          pkg.name + "@" + pkg.version,
-          "--json",
-          "--registry=" + registry,
-        ]),
-      );
-    } catch (error) {
-      if (/E404/.test(String(error.stderr ?? ""))) return null;
-      throw Error("npm registry verification unavailable");
-    }
-  };
-  let published = metadata();
+  const metadata = () => readPublishedPackage(pkg.name, pkg.version);
+  let published = await metadata();
   if (!published) {
     if (!validSource()) throw Error("Main advanced before npm publishing");
     // In hosted CI npm obtains an OIDC token from the configured trusted publisher.
@@ -149,7 +166,7 @@ export async function publishNpm() {
       "--registry=" + registry,
     ]);
     for (let attempt = 0; attempt < 6; attempt++) {
-      published = metadata();
+      published = await metadata();
       if (published) break;
       if (attempt < 5)
         await new Promise((resolve) => setTimeout(resolve, 5000));
