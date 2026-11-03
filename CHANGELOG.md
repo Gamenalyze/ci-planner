@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.1 — 2026-11-03
+
+- Generate a stable shadow report for pull requests, pushes to main and manual dispatch. The output target is the report workflow itself, so an event-inapplicable existing workflow cannot break onboarding.
+- Separate report cancellation by event and commit, harden checkout, and resolve missing/zero before revisions with metadata-only Git reads.
+- Verify actual readiness, shadow mode and all-true report outputs. Explain advisory job status, workflow-inventory guards and the limits of the report job map; preserve existing policies and application gates.
+
 ## 0.5.0 — 2026-11-03
 
 - Replay a bounded merged-PR sample with independently collected checkout/attempt evidence and explicit matrix/required-step contracts. Unknown attempts and failed suggested skips remain separate; historical success never enables enforcement.

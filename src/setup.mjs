@@ -47,33 +47,100 @@ export function proposeSetup(snapshot, { actionRef = "v" + VERSION } = {}) {
   );
   // Refuse unsupported graphs before creating any files; discovery never executes jobs.
   if (Object.keys(sources).length) discoverWorkflows(sources);
-  const selected = Object.keys(sources).sort()[0] ?? workflowPath;
   const expression = (body) => String.fromCharCode(36) + "{{ " + body + " }}";
+  // The shared hex/length grammar needs only ERE groups in Bash. Keep this step
+  // usable before the Action has bootstrapped a missing/unsupported Node runtime.
+  const revisions = [
+    "sha='" + SHA.source.replaceAll("(?:", "(") + "'",
+    "valid() { [[ \"$1\" =~ $sha && ! \"$1\" =~ ^0+$ ]]; }",
+    'base="$EVENT_BASE"',
+    'if ! valid "$base"; then',
+    "  base=$(git rev-parse --verify HEAD^ 2>/dev/null || git rev-parse --verify HEAD)",
+    "fi",
+    'head="$EVENT_HEAD"',
+    'valid "$base"',
+    'valid "$head"',
+    "printf 'base=%s\\nhead=%s\\n' \"$base\" \"$head\" >> \"$GITHUB_OUTPUT\"",
+  ].join("\n");
+  const verify = [
+    "node <<'NODE'",
+    "const assert = require('node:assert/strict');",
+    "assert.equal(process.env.PLANNER_READY, 'true');",
+    "assert.equal(process.env.PLANNER_MODE, 'shadow');",
+    "const run = JSON.parse(process.env.PLANNER_RUN);",
+    "assert(run && typeof run === 'object' && !Array.isArray(run));",
+    "assert(Object.keys(run).length > 0);",
+    "assert.equal(run.report, true);",
+    "assert(Object.values(run).every(value => value === true));",
+    "console.log('Shadow outputs verified; existing CI jobs remain ungated.');",
+    "NODE",
+  ].join("\n");
   const content = stringify({
-    name: "CI Planner report",
-    on: "pull_request",
+    name: "CI Planner shadow",
+    on: {
+      pull_request: {},
+      push: { branches: ["main"] },
+      workflow_dispatch: {},
+    },
     permissions: { contents: "read" },
+    concurrency: {
+      group: "ci-planner-shadow-" + expression("github.repository") + "-" +
+        expression("github.event_name") + "-" +
+        expression("github.event.pull_request.number || github.ref") + "-" +
+        expression("github.sha"),
+      "cancel-in-progress": true,
+    },
     jobs: {
       report: {
+        name: "Shadow report (no CI gating)",
         "runs-on": "ubuntu-latest",
         "timeout-minutes": 5,
         "continue-on-error": true,
         steps: [
           {
             uses: CHECKOUT,
-            with: { "fetch-depth": 0, "persist-credentials": false },
+            with: {
+              ref: expression("github.sha"),
+              "fetch-depth": 0,
+              lfs: false,
+              submodules: false,
+              "persist-credentials": false,
+            },
           },
           {
+            name: "Resolve trusted event revisions",
+            id: "revisions",
+            shell: "bash",
+            env: {
+              EVENT_BASE: expression("github.event.pull_request.base.sha || github.event.before"),
+              EVENT_HEAD: expression("github.event.pull_request.head.sha || github.sha"),
+            },
+            run: revisions,
+          },
+          {
+            name: "Plan without enabling skips",
+            id: "plan",
             uses: "Gamenalyze/ci-planner@" + actionRef,
             with: {
-              base: expression("github.event.pull_request.base.sha"),
-              head: expression("github.event.pull_request.head.sha"),
-              merge: expression("github.sha"),
-              workflow: selected,
+              base: expression("steps.revisions.outputs.base"),
+              head: expression("steps.revisions.outputs.head"),
+              merge: expression("github.event_name == 'pull_request' && github.sha || ''"),
+              workflow: workflowPath,
               enforce: "false",
               summary: "true",
               "audit-repository": "true",
             },
+          },
+          {
+            name: "Verify advisory outputs",
+            id: "verify",
+            shell: "bash",
+            env: {
+              PLANNER_READY: expression("steps.plan.outputs.ready"),
+              PLANNER_MODE: expression("steps.plan.outputs.mode"),
+              PLANNER_RUN: expression("steps.plan.outputs.run"),
+            },
+            run: verify,
           },
         ],
       },
@@ -171,7 +238,7 @@ export function proposeSetup(snapshot, { actionRef = "v" + VERSION } = {}) {
         : []),
       {
         path: workflowPath,
-        purpose: "Advisory PR plan and repository audit summary.",
+        purpose: "Verified advisory PR, main-push and manual report with a repository audit summary.",
         content,
       },
     ],
@@ -191,6 +258,9 @@ export function proposeSetup(snapshot, { actionRef = "v" + VERSION } = {}) {
       "Broad input suggestions are incomplete. Review each job before enabling skips.",
       "Existing jobs are not gated or replaced. Add fallback conditions manually after evaluation.",
       "The runner label in the new advisory workflow needs owner review.",
+      "Inspect repository workflow-inventory guards when adding the report; update exact inventories without weakening checks.",
+      "The advisory job can be green after a failed step. Check the planner and verification step outcomes, not only the job conclusion.",
+      "The run map covers the report workflow; application job contracts and skip safety remain unverified.",
     ],
   };
 }
