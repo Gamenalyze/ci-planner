@@ -73,8 +73,8 @@ test("both publication channels independently require canonical successful CI an
       head_sha: sha,
     };
   const jobs = {
-    total_count: 2,
-    jobs: ["validate (22)", "validate (24)"].map((name) => ({
+    total_count: 3,
+    jobs: ["metadata", "validate (22)", "validate (24)"].map((name) => ({
       name,
       status: "completed",
       conclusion: "success",

@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 /** CLI boundary: validate arguments, print JSON, and export run booleans only after a valid plan. */
 import fs from "node:fs";
+import { selectAffectedTests } from "../src/affected-tests.mjs";
+import { replayHistory } from "../src/history.mjs";
 import {
   auditRepositorySnapshot,
   readRepositorySnapshot,
@@ -36,6 +38,8 @@ const help =
   VERSION +
   "\n\n" +
   "ci-planner audit --help\n" +
+  "ci-planner history --repository OWNER/REPO --contract FILE [--root DIR] [--limit 5] [--fetch]\n" +
+  "ci-planner affected --base SHA [--ref HEAD|SHA] [--root DIR] [--runner jest|vitest] [--github-output]\n" +
   "ci-planner audit-repo [--root DIR] [--ref HEAD|SHA] [--add-checks]\n" +
   "ci-planner init [--root DIR] [--action-ref SHA|vX.Y.Z] [--write]\n" +
   "ci-planner fix [--root DIR] [--repository OWNER/REPO --open-pr]\n" +
@@ -52,22 +56,7 @@ const help =
   "Plans read committed Git objects and the policy from base. Default: shadow (all jobs run).\n" +
   "Enforcement also needs a base policy opt-in and an exact tested merge commit.\n";
 
-/** Parse new command options without shell interpolation, implicit values or duplicate flags. */
-function parseOptions(args, values, booleans = []) {
-  const result = {};
-  for (let i = 0; i < args.length; i++) {
-    const key = args[i];
-    if (![...values, ...booleans].includes(key) || Object.hasOwn(result, key))
-      throw Error("Unknown or repeated option");
-    if (booleans.includes(key)) result[key] = true;
-    else {
-      const value = args[++i];
-      if (!value || value.startsWith("--")) throw Error("Missing option value");
-      result[key] = value;
-    }
-  }
-  return result;
-}
+import { parseOptions, WORKFLOW } from "../src/validation.mjs";
 try {
   const [command, ...rawArgs] = process.argv.slice(2);
   const presentation = {
@@ -114,7 +103,60 @@ try {
   };
   if (command === "--help" || command === undefined) process.stdout.write(help);
   else if (command === "--version") process.stdout.write(VERSION + "\n");
-  else if (command === "validate") {
+  else if (command === "history") {
+    const opts = parseOptions(
+      args,
+      ["--root", "--repository", "--contract", "--limit"],
+      ["--fetch"],
+    );
+    emit(
+      await replayHistory({
+        root: opts["--root"] ?? ".",
+        repository: opts["--repository"],
+        contract: readJSONFile(opts["--contract"], 256 * 1024),
+        limit: opts["--limit"] === undefined ? 5 : Number(opts["--limit"]),
+        fetch: opts["--fetch"] === true,
+      }),
+    );
+  } else if (command === "affected") {
+    const opts = parseOptions(
+      args,
+      ["--root", "--base", "--ref", "--runner"],
+      ["--github-output"],
+    );
+    const root = opts["--root"] ?? ".",
+      snapshot = readDependencySnapshot({ root, ref: opts["--ref"] ?? "HEAD" });
+    commitTree(root, opts["--base"]);
+    const changes = gitRead(root, [
+      "diff",
+      "--no-ext-diff",
+      "--ignore-submodules=none",
+      "--no-renames",
+      "--name-only",
+      "-z",
+      opts["--base"],
+      snapshot.ref,
+      "--",
+    ])
+      .split("\0")
+      .filter(Boolean);
+    const result = selectAffectedTests(snapshot, changes, {
+      runner: opts["--runner"] ?? "vitest",
+    });
+    if (opts["--github-output"]) {
+      if (!process.env.GITHUB_OUTPUT)
+        throw Error("GitHub output needs GITHUB_OUTPUT");
+      fs.appendFileSync(
+        process.env.GITHUB_OUTPUT,
+        "matrix=" +
+          JSON.stringify(result.matrix) +
+          "\nrun_all=" +
+          result.runAll +
+          "\nready=true\n",
+      );
+    }
+    emit(result);
+  } else if (command === "validate") {
     const opts = parseOptions(args, ["--input"], ["--check"]);
     const report = validateSkipDecisions(readJSONFile(opts["--input"]));
     emit(report);
@@ -291,22 +333,7 @@ try {
         : previewFix({ root: opts["--root"] ?? "." }),
     );
   } else if (command === "audit-repo") {
-    const opts = {};
-    for (let i = 0; i < args.length; i++) {
-      const key = args[i];
-      if (
-        !["--root", "--ref", "--add-checks"].includes(key) ||
-        Object.hasOwn(opts, key)
-      )
-        throw Error("Unknown/repeated audit-repo option");
-      if (key === "--add-checks") opts[key] = true;
-      else {
-        const value = args[++i];
-        if (!value || value.startsWith("--"))
-          throw Error("Missing audit-repo value");
-        opts[key] = value;
-      }
-    }
+    const opts = parseOptions(args, ["--root", "--ref"], ["--add-checks"]);
     const root = opts["--root"] ?? ".",
       snapshot = readRepositorySnapshot({ root, ref: opts["--ref"] }),
       report = auditRepositorySnapshot(snapshot);
@@ -332,45 +359,22 @@ try {
     }
     emit(report);
   } else if (command === "plan") {
-    const options = {};
-    for (let i = 0; i < args.length; i++) {
-      const key = args[i];
-      if (
-        ![
-          "--base",
-          "--head",
-          "--merge",
-          "--root",
-          "--repository",
-          "--event",
-          "--workflow",
-          "--enforce",
-          "--force",
-          "--github-output",
-          "--audit-repo",
-          "--validation-input",
-        ].includes(key) ||
-        Object.hasOwn(options, key)
-      )
-        throw Error("Unknown or repeated argument");
-      if (
-        ["--enforce", "--force", "--github-output", "--audit-repo"].includes(
-          key,
-        )
-      )
-        options[key] = true;
-      else {
-        const value = args[++i];
-        if (!value || value.startsWith("--"))
-          throw Error("Missing argument value");
-        options[key] = value;
-      }
-    }
+    const options = parseOptions(
+      args,
+      [
+        "--base",
+        "--head",
+        "--merge",
+        "--root",
+        "--repository",
+        "--event",
+        "--workflow",
+        "--validation-input",
+      ],
+      ["--enforce", "--force", "--github-output", "--audit-repo"],
+    );
     const workflow = options["--workflow"];
-    if (
-      workflow &&
-      !/^\.github\/workflows\/[^/\x00-\x1f]+\.ya?ml$/.test(workflow)
-    )
+    if (workflow && !WORKFLOW.test(workflow))
       throw Error("Expected root workflow path");
     if (options["--github-output"] && (!workflow || !process.env.GITHUB_OUTPUT))
       throw Error("GitHub output needs a workflow path and GITHUB_OUTPUT");

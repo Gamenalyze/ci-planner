@@ -1,0 +1,9 @@
+{
+  "workflow": ".github/workflows/ci.yml",
+  "jobs": {
+    "validate": {
+      "names": ["validate (22)", "validate (24)"],
+      "requiredSteps": ["Run npm run check", "Run npm test", "Smoke-test the distributable"]
+    }
+  }
+}

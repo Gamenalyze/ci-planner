@@ -1,6 +1,6 @@
 /** Conservative JS/TS workspace discovery. Suggestions never assert complete inputs. */
 import path from "node:path";
-import { parseDocument } from "yaml";
+import { parseDocument } from "../vendor/yaml/dist/index.js";
 import { uniqueJSON } from "./json.mjs";
 import { patternMatches } from "./planner.mjs";
 import { SHA } from "./evidence.mjs";

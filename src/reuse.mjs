@@ -17,7 +17,7 @@ import {
   trackedText,
 } from "./evidence.mjs";
 
-const WF = /^\.github\/workflows\/[^/\x00-\x20]+\.ya?ml$/;
+import { WORKFLOW as WF } from "./validation.mjs";
 const fields = [
   "schemaVersion",
   "repository",

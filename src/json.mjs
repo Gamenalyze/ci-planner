@@ -1,4 +1,4 @@
-import { parseDocument } from "yaml";
+import { parseDocument } from "../vendor/yaml/dist/index.js";
 /** Require JSON syntax and unique decoded keys, including escaped spellings of a key. */
 export function uniqueJSON(source) {
   const value = JSON.parse(source);

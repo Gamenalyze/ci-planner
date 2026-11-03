@@ -4,27 +4,22 @@
  * @module setup
  */
 import fs from "node:fs";
+import { gitRead, readDependencySnapshot } from "./evidence.mjs";
+import { suggestJobInputs } from "./input-scopes.mjs";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
-import { stringify } from "yaml";
+import { stringify } from "../vendor/yaml/dist/index.js";
 import { buildPlan, discoverWorkflows, VERSION } from "./planner.mjs";
 import {
   auditRepositorySnapshot,
   readRepositorySnapshot,
 } from "./repository-audit.mjs";
 
+import { SHA, WORKFLOW } from "./validation.mjs";
 const workflowPath = ".github/workflows/ci-planner.yml";
 const policyPath = ".ci-planner.json";
 const CHECKOUT = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1";
-const workflow = (name) => /^\.github\/workflows\/[^/]+\.ya?ml$/.test(name);
-const git = (root, args) =>
-  execFileSync("git", ["-c", "core.fsmonitor=false", ...args], {
-    cwd: root,
-    encoding: "utf8",
-    maxBuffer: 8 * 1024 * 1024,
-    timeout: 30000,
-    stdio: ["ignore", "pipe", "pipe"],
-  }).trim();
+const workflow = (name) => WORKFLOW.test(name);
+const git = (root, args) => gitRead(root, args).trim();
 
 /**
  * Propose an advisory workflow and, when absent, an incomplete shadow policy.
@@ -34,7 +29,7 @@ const git = (root, args) =>
  */
 export function proposeSetup(snapshot, { actionRef = "v" + VERSION } = {}) {
   if (
-    !/^[0-9a-f]{40}$/.test(snapshot?.ref ?? "") ||
+    !SHA.test(snapshot?.ref ?? "") ||
     !snapshot.files ||
     typeof snapshot.files !== "object" ||
     Array.isArray(snapshot.files) ||
@@ -140,10 +135,11 @@ export function proposeSetup(snapshot, { actionRef = "v" + VERSION } = {}) {
       ? [...proposedInputs].sort()
       : ["**"];
   const completeness = auditRepositorySnapshot(snapshot);
+  const jobScopes = suggestJobInputs(snapshot, graph, suggestedInputs);
   const jobs = Object.fromEntries(
     [...graph.keys()].map((key) => [
       key,
-      { inputsComplete: false, inputs: suggestedInputs },
+      { inputsComplete: false, inputs: jobScopes[key].inputs },
     ]),
   );
   if (Object.keys(jobs).length > 1000)
@@ -182,6 +178,7 @@ export function proposeSetup(snapshot, { actionRef = "v" + VERSION } = {}) {
     discoveredJobs: graph.size,
     scopeProposal: {
       inputs: suggestedInputs,
+      jobs: jobScopes,
       ignored,
       requiresOwnerReview: true,
       completeness: completeness.summary,
@@ -244,6 +241,13 @@ export function initializeRepository({
   actionRef,
 } = {}) {
   const snapshot = readRepositorySnapshot({ root });
+  const dependencies = readDependencySnapshot({ root, ref: snapshot.ref });
+  snapshot.files = {
+    ...dependencies.files,
+    ...Object.fromEntries(
+      Object.entries(snapshot.files).filter(([, value]) => value !== null),
+    ),
+  };
   const proposal = proposeSetup(snapshot, { actionRef });
   if (!write) return proposal;
   const base = fs.realpathSync(root);

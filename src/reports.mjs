@@ -471,6 +471,55 @@ export function renderMarkdown(report) {
     ].includes(report.mode)
   )
     content = repositoryView(report);
+  else if (report.mode === "historical-replay")
+    content = [
+      "## Historical replay",
+      "",
+      "Repository: " + markdownCell(report.repository),
+      "",
+      table(["Measure", "Observed"], Object.entries(report.summary ?? {})),
+      "",
+      table(
+        [
+          "PR",
+          "Run / attempt",
+          "Evidence",
+          "Candidate jobs",
+          "Worker seconds",
+          "Failed suggested skips",
+        ],
+        list(report.observations, 100).map((o) => [
+          o.pr,
+          String(o.runId ?? "unknown") + " / " + String(o.attempt ?? "unknown"),
+          o.verified ? "verified checkout and full attempt" : "unknown",
+          o.candidateJobs,
+          o.candidateWorkerSeconds,
+          o.failedSuggestedSkips,
+        ]),
+      ),
+      "",
+      "Candidate worker time is not billed savings. Historical success never grants enforcement authority.",
+    ].join("\n");
+  else if (report.mode === "affected-tests-advisory")
+    content = [
+      "## Affected tests",
+      "",
+      report.runAll
+        ? "Run the full suite: uncertain inputs or unsupported configuration."
+        : "Static import selection: review the consumer fallback before use.",
+      "",
+      table(
+        ["Runner", "Test"],
+        list(report.tests).map((n) => [report.runner, n]),
+      ),
+      "",
+      table(
+        ["File", "Fallback reason"],
+        list(report.reasons).map((r) => [r.file, r.reason]),
+      ),
+      "",
+      "Input completeness remains false. Missing or failed selection must run the full suite.",
+    ].join("\n");
   else if (report.mode === "read-only-audit") content = timingView(report);
   else if (["setup-preview", "setup-written"].includes(report.mode))
     content = setupView(report);

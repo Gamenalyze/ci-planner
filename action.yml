@@ -63,9 +63,6 @@ runs:
       with:
         node-version: "24"
         package-manager-cache: false
-    - name: Install the pinned parser without lifecycle scripts
-      shell: bash
-      run: npm ci --ignore-scripts --omit=dev --no-audit --no-fund --prefix "$GITHUB_ACTION_PATH"
     - name: Plan from committed inputs
       id: plan
       shell: bash

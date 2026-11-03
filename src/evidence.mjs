@@ -3,7 +3,8 @@ import fs from "node:fs";
 import { execFileSync } from "node:child_process";
 import { uniqueJSON } from "./json.mjs";
 
-export const SHA = /^[0-9a-f]{40}$/;
+import { SHA } from "./validation.mjs";
+export { SHA } from "./validation.mjs";
 export const HASH = /^[0-9a-f]{64}$/;
 export const integer = (n) => Number.isSafeInteger(n) && n > 0;
 export function gitRead(root, args, maxBuffer = 8 * 1024 * 1024) {
@@ -48,7 +49,7 @@ export function commitTree(root, sha) {
 export function trackedText(root, sha, filename) {
   commitTree(root, sha);
   const entry = gitRead(root, ["ls-tree", sha, "--", filename]).trim();
-  if (!/^100(?:644|755) blob [0-9a-f]{40}\t/.test(entry))
+  if (!/^100(?:644|755) blob (?:[0-9a-f]{40}|[0-9a-f]{64})\t/.test(entry))
     throw Error("Expected a regular tracked evidence file");
   return gitRead(root, ["show", sha + ":" + filename], 256 * 1024);
 }
@@ -89,7 +90,7 @@ export function readDependencySnapshot({ root = ".", ref = "HEAD" } = {}) {
   let bytes = 0,
     reads = 0;
   for (const line of entries) {
-    const m = /^(\d+) (\w+) [0-9a-f]{40}\s+(\d+|-)\t([\s\S]+)$/.exec(line);
+    const m = /^(\d+) (\w+) (?:[0-9a-f]{40}|[0-9a-f]{64})\s+(\d+|-)\t([\s\S]+)$/.exec(line);
     if (!m) throw Error("Invalid Git inventory");
     const [, mode, type, rawSize, name] = m;
     files[name] = null;

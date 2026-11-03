@@ -107,3 +107,11 @@ Use validate for shadow/full-run feedback, discover for JS/TS workspace scope su
 ## Audit repository check coverage
 
 Run ci-planner audit-repo --root DIR [--ref HEAD|FULL_SHA]. It prints JSON covering detected checks, invocation locations, uncertainties and recommendations. Exit 0 means a valid report, including reports with missing checks; exit 1 means invalid input or an unreadable/bounded snapshot. Read [the completeness audit guide](repository-audit.md) before acting on findings.
+
+## Historical replay and affected tests
+
+`ci-planner history --repository OWNER/REPO --contract FILE --limit 5 --root . --fetch` collects bounded merged-PR execution observations. The contract must explicitly name the workflow, every matrix display name, and required test steps. Missing evidence remains unknown; replay never grants skip authority.
+
+`ci-planner affected --base SHA --ref HEAD --runner jest` emits a test matrix from static single-package JavaScript imports. Use `vitest` for a Vitest consumer. Unsupported or uncertain inputs run all. The optional `--github-output` exports `matrix`, `run_all` and `ready` only after successful selection. A missing/failed producer must cause a full-suite fallback.
+
+See [the roadmap guide](audit-roadmap.md) and [consumer runner](../examples/run-affected-tests.mjs).
