@@ -90,3 +90,22 @@ test("job timing uses median and nearest-rank p90; repeated findings aggregate a
   assert.equal(cache[0].observedSeconds, 300);
   assert.match(renderMarkdown(report), /Median min/);
 });
+
+test("timing recommendations escape untrusted report markup", () => {
+  const report = auditSnapshot(snapshot());
+  report.cancellation.recommendation =
+    "![passed](https://evil.example/ping)<img src=x>";
+  const markdown = renderMarkdown(report);
+  assert(!markdown.includes("![passed]"));
+  assert(!markdown.includes("<img"));
+});
+test("performance Markdown accepts the producer's aggregate job bound and truncates its table", () => {
+  const report = advisePerformance(snapshot());
+  report.jobSummaries = Array.from({ length: 1002 }, (_, i) => ({
+    ...report.jobSummaries[0],
+    job: "job-" + i,
+  }));
+  const markdown = renderMarkdown(report);
+  assert.match(markdown, /omitted/);
+  assert(markdown.length < 96 * 1024);
+});

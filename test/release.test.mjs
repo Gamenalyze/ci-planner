@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import fs from "node:fs";
 import { releaseSpec, marketplaceVersion } from "../scripts/release.mjs";
 const input = {
   pkg: { name: "@gamenalyze/ci-planner", version: "0.4.0" },
@@ -29,4 +30,30 @@ test("Marketplace verification reads release metadata, never README version stri
     "</script>";
   assert.equal(marketplaceVersion(html), "v0.3.0");
   assert.equal(marketplaceVersion("<p>v0.4.0</p>"), null);
+});
+
+test("Marketplace parser accepts captured GitHub release data", () => {
+  const html = fs.readFileSync(
+    new URL("./fixtures/marketplace-release-data.html", import.meta.url),
+    "utf8",
+  );
+  assert.equal(marketplaceVersion(html), "v0.3.0");
+});
+
+import { verifyTarball } from "../scripts/publish-npm.mjs";
+import { createHash } from "node:crypto";
+test("npm publishing binds both checksum and registry integrity to release bytes", () => {
+  const bytes = Buffer.from("release tarball"),
+    name = "gamenalyze-ci-planner-0.4.0.tgz";
+  const checksum =
+    createHash("sha256").update(bytes).digest("hex") + "  " + name + "\n";
+  assert.match(verifyTarball(bytes, checksum, name), /^sha512-/);
+  assert.throws(
+    () => verifyTarball(Buffer.from("tampered"), checksum, name),
+    /mismatch/,
+  );
+  assert.throws(
+    () => verifyTarball(bytes, checksum, "../tarball.tgz"),
+    /Invalid/,
+  );
 });

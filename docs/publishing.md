@@ -8,8 +8,12 @@ GitHub's public Marketplace latest-release metadata is checked after publication
 
 GitHub documents a Marketplace checkbox and two-factor confirmation, and exposes no documented Marketplace publish parameter in its REST create-release endpoint. The workflow therefore attempts normal release publication and verifies the outcome instead of inventing an API flag. See [GitHub publishing requirements](https://docs.github.com/en/actions/how-tos/create-and-publish-actions/publish-in-github-marketplace) and [the release API](https://docs.github.com/en/rest/releases/releases#create-a-release).
 
-## npm registry status
+## npm trusted publishing
 
-The release tarball is a normal scoped npm package and can be installed directly from its GitHub release URL. Publishing @gamenalyze/ci-planner to registry.npmjs.org is a separate channel. It is not enabled by this workflow: npm account/scope ownership and an authenticated first publication or supported package bootstrap have not been configured here.
+The free npm organization gamenalyze is owned by the authenticated gameanalyze account. The npm channel is @gamenalyze/ci-planner. It is separate from the GitHub Marketplace Action.
 
-For a later npm workflow, use npm trusted publishing bound to this repository, exact workflow filename and an optional protected environment. The workflow needs id-token: write and an npm version supporting OIDC. Verify the package's trusted publisher permits direct publish before enabling it. See [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/). Do not add a long-lived npm token just to make a green release badge.
+The publisher's npm job is enabled only after the first authenticated package publication and an npm trusted-publisher configuration exist. That configuration binds @gamenalyze/ci-planner to Gamenalyze/ci-planner, workflow release.yml, with direct publishing permitted. Set the repository variable NPM_PUBLISH_ENABLED=true only after checking it. Account 2FA and first-publish browser authorization must be completed by the owner. See [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/).
+
+Once enabled, successful GitHub publication runs the separate npm job with contents: read and id-token: write. It uses npm 11.17.0 and OIDC; no persistent npm token is saved in GitHub. It verifies canonical source/branch identity and the release tag, downloads the release tarball and SHA-256 checksum, verifies its bytes, publishes with provenance, then verifies the registry's SHA-512 integrity matches that same tarball. Retry skips immutable already-published bytes, while a checksum/integrity mismatch fails. Commits without version bumps never republish. Missing trusted publishing or npm/Marketplace verification produces a visible failure.
+
+The install command after the first verified publication is `npx @gamenalyze/ci-planner audit --repository OWNER/REPO --format markdown`. The GitHub tarball installation remains available independently of npm registry access.

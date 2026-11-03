@@ -46,7 +46,7 @@ After installing the package locally, its executable is named `ci-planner`. Stab
 npx --yes --package=https://github.com/Gamenalyze/ci-planner/releases/download/v0.4.0/gamenalyze-ci-planner-0.4.0.tgz ci-planner audit --repository OWNER/REPO --format markdown
 ```
 
-The scoped npm registry package is not yet published. Do not use `npx @gamenalyze/ci-planner` until npm ownership and trusted publishing are configured. See [publishing](docs/publishing.md) for the automatic GitHub release and Marketplace verification workflow.
+The npm organization is configured; the first registry publication and trusted-publisher verification are release gates. After verified publication, use `npx @gamenalyze/ci-planner audit --repository OWNER/REPO --format markdown`. See [publishing](docs/publishing.md) for automatic GitHub, Marketplace and npm publication.
 
 ## Audit CI
 

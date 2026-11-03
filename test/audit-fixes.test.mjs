@@ -91,6 +91,8 @@ test("control-only declarations cannot suppress needs output invalidation", () =
   for (const expression of [
     "needs['build'].outputs.artifact",
     "toJSON(needs)",
+    "NEEDS.BUILD.OUTPUTS.artifact",
+    "needs.build['outputs'].artifact",
     "needs.*.outputs",
   ])
     assert.throws(

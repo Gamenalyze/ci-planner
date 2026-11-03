@@ -215,7 +215,7 @@ function timingView(report) {
               : (report.totals.cancelledWorkerShare * 100).toFixed(1) +
                 "% of observed time") +
             ")**.",
-          report.cancellation?.recommendation ?? "",
+          markdownCell(report.cancellation?.recommendation),
           table(
             ["Conclusion", "Runs", "Worker-minutes"],
             Object.entries(report.totals.byConclusion ?? {}).map(
@@ -396,7 +396,7 @@ function evidenceView(report) {
           "Install min",
           "Est. worker-min/PR",
         ],
-        list(report.jobSummaries ?? [], 1000).map((j) => [
+        list(report.jobSummaries ?? [], 10000).map((j) => [
           j.workflow + " / " + j.job,
           j.samples,
           Number.isFinite(j.medianSeconds)

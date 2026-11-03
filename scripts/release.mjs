@@ -174,10 +174,13 @@ export async function release() {
       refs.split("\n")[0];
     taggedSha = target.split(/\s/)[0];
   }
-  const existing = JSON.parse(
-    gh(["api", "--method", "GET", `repos/${repository}/releases?per_page=100`]),
-  );
-  const current = existing.find((r) => r.tag_name === spec.tag);
+  let current = null;
+  try {
+    current = get(`repos/${repository}/releases/tags/${spec.tag}`);
+  } catch (error) {
+    if (!/HTTP 404/.test(String(error.stderr ?? "")))
+      throw Error("Version release metadata unavailable");
+  }
   if (taggedSha && taggedSha !== sha) {
     // Ordinary commits without a version bump do not republish or move tags.
     if (!current || current.draft || current.prerelease)
@@ -245,6 +248,7 @@ export async function release() {
   for (let attempt = 0; attempt < 6; attempt++) {
     const response = await fetch(
       "https://github.com/marketplace/actions/ci-planner",
+      { signal: AbortSignal.timeout(10000) },
     );
     if (response.ok) marketplace = marketplaceVersion(await response.text());
     if (marketplace === spec.tag) break;

@@ -9,8 +9,8 @@
 - Surface cancelled worker time, share and totals by conclusion, with cause left unknown. Add optional owner runner cost rates and expose incomplete pricing coverage.
 - Aggregate per-job median, nearest-rank p90, shard ratios, install time and estimates from complete successful PR samples; combine repeated review prompts across runs.
 - Propose actual source/script scopes and documentation ignores in init, leaving every completeness assertion false and mode shadow.
-- Automatically create versioned GitHub releases with npm tarballs/checksums after both Node lanes pass on main. Verify the exact source and public Marketplace latest version; publication failures remain visible and version tags never move.
-- Lead with waste and missing-check audits. npm registry publishing, live merged-PR replay, affected-test selection and broader language audits remain follow-up work.
+- Automatically create versioned GitHub releases with npm tarballs/checksums after both Node lanes pass on main, with an optional npm OIDC job that verifies identical tarball and registry bytes. Verify the exact source and public Marketplace latest version; publication failures remain visible and version tags never move.
+- Lead with waste and missing-check audits. The first npm registry publication/trust bootstrap, live merged-PR replay, affected-test selection and broader language audits remain follow-up work.
 
 ## 0.3.1 — 2026-11-03
 

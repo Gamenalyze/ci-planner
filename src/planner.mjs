@@ -369,16 +369,16 @@ export function discoverWorkflows(
         if (field === "if") return;
         if (typeof value === "string") {
           for (const m of value.matchAll(
-            /\bneeds\.([A-Za-z_][A-Za-z0-9_-]*)\.outputs\b/g,
+            /\bneeds\.([A-Za-z_][A-Za-z0-9_-]*)\.outputs\b/gi,
           ))
-            dataNeeds.add(m[1]);
+            dataNeeds.add(m[1].toLowerCase());
           // Bracket/dynamic indexing cannot establish a control-only edge.
           if (
             /\bneeds(?:\.[A-Za-z_][A-Za-z0-9_-]*)?\s*\[|toJSON\s*\(\s*needs\b|\bneeds\.\*/i.test(
               value,
             )
           )
-            needs.forEach((n) => dataNeeds.add(n));
+            needs.forEach((n) => dataNeeds.add(n.toLowerCase()));
         } else if (Array.isArray(value)) value.forEach((v) => inspectNeeds(v));
         else if (object(value))
           Object.entries(value).forEach(([k, v]) => inspectNeeds(v, k));
@@ -671,7 +671,7 @@ export function buildPlan({
     for (const id of controls) {
       if (!job.needs.includes(job.workflow + "#" + id))
         throw Error("Control dependency is not a needs edge");
-      if (job.dataNeeds.includes(id))
+      if (job.dataNeeds.includes(id.toLowerCase()))
         throw Error("Control dependency carries needs outputs");
     }
     for (const upstream of job.needs)
