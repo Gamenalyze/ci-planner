@@ -121,6 +121,82 @@ function contractCheck(contract) {
       throw Error("Invalid required step mapping");
   }
 }
+/** Retain shell operators in substitutions while ignoring literal quoted program text. */
+export function unquotedShell(source) {
+  const stack = [{ quote: null, depth: 0 }];
+  let output = "";
+  for (let i = 0; i < source.length; i++) {
+    const ch = source[i],
+      frame = stack.at(-1);
+    if (frame.quote === "'") {
+      if (ch === "'") {
+        frame.quote = null;
+        output += " ";
+      }
+      continue;
+    }
+    if (ch === "\\") {
+      i++;
+      continue;
+    }
+    if (frame.quote === '"') {
+      if (ch === '"') {
+        frame.quote = null;
+        output += " ";
+      } else if (ch === "$" && source[i + 1] === "(") {
+        stack.push({ quote: null, depth: 1 });
+        output += "$(";
+        i++;
+      } else if (ch === "`") return null;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      frame.quote = ch;
+      output += " ";
+      continue;
+    }
+    if (ch === "`") return null;
+    if (ch === "#" && (i === 0 || /\s/.test(source[i - 1]))) {
+      while (i < source.length && source[i] !== "\n") i++;
+      output += "\n";
+      continue;
+    }
+    if (ch === "$" && source[i + 1] === "(") {
+      stack.push({ quote: null, depth: 1 });
+      output += "$(";
+      i++;
+      continue;
+    }
+    if (stack.length > 1) {
+      if (ch === "(") frame.depth++;
+      if (ch === ")" && --frame.depth === 0) stack.pop();
+    }
+    output += ch;
+  }
+  return stack.length === 1 && stack[0].quote === null ? output : null;
+}
+/** Named invocations remain an owner-reviewed contract; opaque shells/operators cannot prove a full run. */
+function fullInvocation(step, job, doc) {
+  if (typeof step.run !== "string") return false;
+  const shell =
+    step.shell ?? job.defaults?.run?.shell ?? doc.defaults?.run?.shell;
+  if (shell !== undefined && !["bash", "sh"].includes(shell)) return false;
+  if (
+    shell === undefined &&
+    !/^(?:ubuntu|macos)-(?:latest|\d+(?:\.\d+)?)$/.test(job["runs-on"] ?? "")
+  )
+    return false;
+  const plain = unquotedShell(step.run);
+  return (
+    plain !== null &&
+    plain.trim() !== "" &&
+    !/[|;&]/.test(plain) &&
+    !/(?:^|\n)\s*(?:set\s+\+e|if|for|while|until|case|trap|eval|exec|source|exit|bash|sh|zsh|pwsh|function)\b/.test(
+      plain,
+    ) &&
+    !/^\s*(?:echo|printf|true|:)\b/.test(plain)
+  );
+}
 /** Static full-run checks are independent of PR-supplied reports and never infer missing matrix names. */
 export function inspectFullWorkflow(text, contract) {
   contractCheck(contract);
@@ -153,13 +229,21 @@ export function inspectFullWorkflow(text, contract) {
     if (
       !job ||
       job.if !== undefined ||
-      job.needs !== undefined ||
       job["continue-on-error"] ||
       !Array.isArray(job.steps)
     ) {
       issues.push("gated-or-opaque-job:" + id);
       continue;
     }
+    const prerequisites =
+      typeof job.needs === "string" ? [job.needs] : (job.needs ?? []);
+    if (
+      !Array.isArray(prerequisites) ||
+      prerequisites.some(
+        (dep) => typeof dep !== "string" || !Object.hasOwn(contract.jobs, dep),
+      )
+    )
+      issues.push("unmapped-or-dynamic-prerequisite:" + id);
     let count = 1;
     if (job.strategy?.matrix) {
       const matrix = job.strategy.matrix;
@@ -210,12 +294,7 @@ export function inspectFullWorkflow(text, contract) {
       if (
         !job.steps.some(
           (s) =>
-            (s.name ?? "Run " + s.run) === name &&
-            typeof s.run === "string" &&
-            !/\|\||(?:^|\n)\s*(?:set\s+\+e|if|for|while|until|case|trap)\b/.test(
-              s.run,
-            ) &&
-            !/^\s*(?:echo|printf|true|:)\b/.test(s.run),
+            (s.name ?? "Run " + s.run) === name && fullInvocation(s, job, doc),
         )
       )
         issues.push("required-invocation-unverified:" + id);

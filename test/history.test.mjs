@@ -4,11 +4,12 @@ import {
   replayHistory,
   checkoutFromLog,
   inspectFullWorkflow,
+  unquotedShell,
 } from "../src/history.mjs";
 import { fixture } from "./helpers.mjs";
 const workflow = ".github/workflows/ci.yml",
   pin = "a".repeat(40);
-const source = `on: pull_request\njobs:\n  tests:\n    strategy:\n      matrix:\n        node: [22, 24]\n    steps:\n      - uses: actions/checkout@${pin}\n      - run: npm test\n`;
+const source = `on: pull_request\njobs:\n  tests:\n    runs-on: ubuntu-latest\n    strategy:\n      matrix:\n        node: [22, 24]\n    steps:\n      - uses: actions/checkout@${pin}\n      - run: npm test\n`;
 const contract = {
   workflow,
   jobs: {
@@ -185,4 +186,37 @@ test("bounded historical replay separates known success, failed suggested skips 
     assert.equal(report.summary.unknownAttempts, 1);
     assert.equal(report.summary.candidateWorkerSeconds, 0);
   }
+});
+
+test("required invocation evidence rejects masked shell failures and custom shells while respecting quoted program text", () => {
+  for (const cmd of [
+    "npm test | tee out.log",
+    "npm test; true",
+    "npm test &",
+    "npm test && true",
+    "npm test || true",
+  ]) {
+    const changed = source.replace(
+      "      - run: npm test",
+      "      - name: Run npm test\n        run: " + cmd,
+    );
+    assert(
+      inspectFullWorkflow(changed, contract).includes(
+        "required-invocation-unverified:tests",
+      ),
+      cmd,
+    );
+  }
+  const custom = source.replace(
+    "      - run: npm test",
+    "      - name: Run npm test\n        shell: bash {0}\n        run: npm test",
+  );
+  assert(
+    inspectFullWorkflow(custom, contract).includes(
+      "required-invocation-unverified:tests",
+    ),
+  );
+  assert(!unquotedShell("node -e 'const x=1; console.log(x);'").includes(";"));
+  assert(unquotedShell('npm test "$(false; true)"').includes(";"));
+  assert.equal(unquotedShell("npm test 'unterminated"), null);
 });

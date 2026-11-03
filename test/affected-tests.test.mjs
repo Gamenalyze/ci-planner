@@ -50,6 +50,10 @@ test("aliases, dynamic imports, runtime files, globals, configuration, missing/d
     { "src/a.js": "const name=globalThis['process'];" },
     { "jest.config.js": "export default {};" },
     { "vitest.config.js": "export default {};" },
+    { "vitest.workspace.js": "export default [];" },
+    { "jest.preset.js": "export default {};" },
+    { "jest-preset.json": "{}" },
+    { ".mocharc.json": "{}" },
     { "test/setup.js": "" },
     { "src/a.js": null },
     { "src/a.ts": "export const a:number=1" },
@@ -108,4 +112,22 @@ test("per-job setup follows actual script and imports, unrelated opaque commands
   ]);
   assert.equal(scopes[workflow + "#check"].inputsComplete, false);
   assert.deepEqual(scopes[workflow + "#opaque"].inputs, ["**"]);
+});
+
+test("default Jest test.js/spec.js files are included without widening Vitest's default test names", () => {
+  const f = files();
+  f["test.js"] = "import {n} from './src/shared.js';";
+  f["spec.js"] = "import {n} from './src/shared.js';";
+  assert.deepEqual(
+    selectAffectedTests({ ref, files: f }, ["src/shared.js"], {
+      runner: "jest",
+    }).tests,
+    ["spec.js", "test.js", "test/a.test.js"],
+  );
+  assert.deepEqual(
+    selectAffectedTests({ ref, files: f }, ["src/shared.js"], {
+      runner: "vitest",
+    }).tests,
+    ["test/a.test.js"],
+  );
 });

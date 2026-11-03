@@ -5,10 +5,11 @@ import { SHA } from "./validation.mjs";
 import { uniqueJSON } from "./json.mjs";
 const source = /\.(?:[cm]?js|[jt]sx?|[cm]ts)$/;
 const testFile =
-  /(?:\.(?:test|spec)\.[cm]?js$|(?:^|\/)__tests__\/.*\.[cm]?js$)/;
+  /(?:(?:^|\/|\.)(?:test|spec)\.[cm]?js$|(?:^|\/)__tests__\/.*\.[cm]?js$)/;
+const vitestFile = /\.(?:test|spec)\.[cm]?js$/;
 const excluded = /(?:^|\/)(?:node_modules|vendor|\.git)\//;
 const configuration =
-  /(?:^|\/)(?:(?:jest|vitest|vite|babel|webpack|rollup|next)\.config\.|\.(?:babelrc|swcrc)|tsconfig|jsconfig|.*(?:setup|globalSetup|globalTeardown)[^.]*\.[cm]?[jt]s)/i;
+  /(?:^|\/)(?:(?:jest|vitest|vite|babel|webpack|rollup|next)\.config\.|vitest\.workspace\.|jest[.-]preset\.|\.mocharc(?:\.|$)|\.(?:babelrc|swcrc)|tsconfig|jsconfig|.*(?:setup|globalSetup|globalTeardown)[^.]*\.[cm]?[jt]s)/i;
 
 /** Parse without executing configs, transforms, imports, repository code or npm. */
 export function javascriptGraph({ ref, files }) {
@@ -191,6 +192,9 @@ export function selectAffectedTests(
     throw Error("Invalid runner or changes");
   const graph = javascriptGraph(snapshot),
     reasons = [...graph.warnings];
+  const tests = graph.tests.filter(
+    (name) => runner === "jest" || vitestFile.test(name),
+  );
   for (const name of changes)
     if (!graph.edges.has(name))
       reasons.push({
@@ -199,7 +203,7 @@ export function selectAffectedTests(
           ? "non-source-or-global-input"
           : "deleted-or-unknown-input",
       });
-  if (!graph.tests.length)
+  if (!tests.length)
     reasons.push({ file: null, reason: "no-recognized-tests" });
   const reverse = new Map();
   for (const [file, deps] of graph.edges)
@@ -216,9 +220,7 @@ export function selectAffectedTests(
         queue.push(file);
       }
   let runAll = reasons.length > 0;
-  let selected = runAll
-    ? graph.tests
-    : graph.tests.filter((n) => affected.has(n));
+  let selected = runAll ? tests : tests.filter((n) => affected.has(n));
   if (
     !runAll &&
     (selected.length > 1000 ||
@@ -226,7 +228,7 @@ export function selectAffectedTests(
   ) {
     runAll = true;
     reasons.push({ file: null, reason: "selected-argument-budget" });
-    selected = graph.tests;
+    selected = tests;
   }
   const row = {
     schemaVersion: 1,
