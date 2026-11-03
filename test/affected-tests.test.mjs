@@ -55,6 +55,10 @@ test("aliases, dynamic imports, runtime files, globals, configuration, missing/d
     { "src/a.ts": "export const a:number=1" },
     { "src/a.js": "const r = require('./shared.js');" },
     { "src/a.js": "import {vi} from 'vitest'; vi.mock('./shared.js');" },
+    {
+      "src/a.js": "import {n} from '../vendor/bridge.js';",
+      "vendor/bridge.js": "export {n} from '../src/shared.js';",
+    },
   ];
   for (const extra of cases)
     assert.equal(

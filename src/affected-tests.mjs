@@ -127,7 +127,12 @@ export function javascriptGraph({ ref, files }) {
             stem + "/index.js",
             stem + "/index.mjs",
           ].filter((n) => Object.hasOwn(files, n));
-          if (matches.length !== 1 || !/\.[cm]?js$/.test(matches[0]))
+          if (
+            matches.length !== 1 ||
+            !/\.[cm]?js$/.test(matches[0]) ||
+            excluded.test(matches[0]) ||
+            typeof files[matches[0]] !== "string"
+          )
             warn(name, "unresolved-or-ambiguous-relative-import");
           else edges.get(name).add(matches[0]);
         } else {
