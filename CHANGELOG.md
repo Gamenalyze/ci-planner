@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.3 — 2026-11-03
+
+- Allow up to five minutes for registry metadata to become visible after a successful npm upload. Polling remains bounded, reads fresh exact-version records, and never repeats the upload or overwrites a release.
+- Distinguish unavailable publication evidence at the deadline from a genuine byte-integrity mismatch. HTTP/read errors and differing package bytes still fail visibly.
+
 ## 0.4.2 — 2026-11-03
 
 - Verify npm publication against a fresh, bounded exact-version registry record, bypassing cached not-found responses for newly created packages and versions.

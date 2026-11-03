@@ -23,3 +23,6 @@ If main has advanced before recovery, dispatch Publish CI Planner at the existin
 
 
 Registry verification reads the exact version over HTTPS with a unique verification query and no-cache/no-store hints, a 20-second timeout and a 4 MiB response bound. This avoids stale negative packument caches observed during the first automatic npm publication. HTTP 404 remains an unverified/not-yet-visible record; other read failures and malformed/oversized records fail visibly. The published SHA-512 must still equal the verified release tarball, including on retry.
+
+
+After one successful npm upload, verification allows up to five minutes for exact-version metadata propagation, polling every five seconds and retaining each request's 20-second timeout. It never repeats the upload during that wait. Only HTTP 404 is treated as not yet visible; other failed reads remain failures. A record with differing identity or integrity still fails. Reaching the bounded visibility deadline has a distinct diagnostic from an actual byte mismatch; retry verifies immutable existing bytes.

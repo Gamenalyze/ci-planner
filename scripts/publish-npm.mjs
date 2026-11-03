@@ -54,6 +54,34 @@ export async function readPublishedPackage(name, version, fetcher = fetch) {
     throw Error("Invalid npm registry metadata");
   }
 }
+/** Allow bounded registry propagation after a successful immutable upload. */
+export async function waitForPublication(
+  read,
+  {
+    maximumMs = 300000,
+    intervalMs = 5000,
+    now = Date.now,
+    delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  } = {},
+) {
+  if (
+    !Number.isSafeInteger(maximumMs) ||
+    maximumMs < 1 ||
+    maximumMs > 300000 ||
+    !Number.isSafeInteger(intervalMs) ||
+    intervalMs < 1 ||
+    intervalMs > 30000
+  )
+    throw Error("Invalid registry verification window");
+  const deadline = now() + maximumMs;
+  while (true) {
+    const record = await read();
+    if (record) return record;
+    const remaining = deadline - now();
+    if (remaining <= 0) return null;
+    await delay(Math.min(intervalMs, remaining));
+  }
+}
 export async function publishNpm() {
   const repository = "Gamenalyze/ci-planner";
   if (
@@ -165,13 +193,12 @@ export async function publishNpm() {
       "--provenance",
       "--registry=" + registry,
     ]);
-    for (let attempt = 0; attempt < 6; attempt++) {
-      published = await metadata();
-      if (published) break;
-      if (attempt < 5)
-        await new Promise((resolve) => setTimeout(resolve, 5000));
-    }
+    published = await waitForPublication(metadata);
   }
+  if (!published)
+    throw Error(
+      "Uploaded npm version is not visible before the bounded verification deadline; retry verification without changing its version or bytes",
+    );
   if (
     published?.name !== pkg.name ||
     published.version !== pkg.version ||

@@ -1,6 +1,6 @@
 {
   "name": "@gamenalyze/ci-planner",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Free CI waste and missing-check audits for GitHub Actions, with a conservative planner",
   "type": "module",
   "license": "MIT",

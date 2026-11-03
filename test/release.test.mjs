@@ -239,3 +239,57 @@ test("registry not-found remains unknown while invalid or unavailable evidence f
       ),
     );
 });
+
+import { waitForPublication } from "../scripts/publish-npm.mjs";
+test("publication verification waits for delayed visibility without repeating upload", async () => {
+  let clock = 0,
+    reads = 0;
+  const sleeps = [],
+    record = { version: "0.4.3" };
+  const result = await waitForPublication(
+    async () => (++reads === 3 ? record : null),
+    {
+      maximumMs: 30000,
+      intervalMs: 5000,
+      now: () => clock,
+      delay: async (ms) => {
+        sleeps.push(ms);
+        clock += ms;
+      },
+    },
+  );
+  assert.equal(result, record);
+  assert.equal(reads, 3);
+  assert.deepEqual(sleeps, [5000, 5000]);
+});
+test("publication visibility wait stops at its deadline and propagates unsafe read errors", async () => {
+  let clock = 0,
+    reads = 0;
+  const sleeps = [];
+  assert.equal(
+    await waitForPublication(
+      async () => {
+        reads++;
+        return null;
+      },
+      {
+        maximumMs: 12000,
+        intervalMs: 5000,
+        now: () => clock,
+        delay: async (ms) => {
+          sleeps.push(ms);
+          clock += ms;
+        },
+      },
+    ),
+    null,
+  );
+  assert.equal(reads, 4);
+  assert.deepEqual(sleeps, [5000, 5000, 2000]);
+  await assert.rejects(
+    waitForPublication(async () => {
+      throw Error("invalid metadata");
+    }),
+    /invalid metadata/,
+  );
+});
