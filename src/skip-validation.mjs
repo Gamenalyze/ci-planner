@@ -135,13 +135,23 @@ export function validateSkipDecisions({
 }
 
 /** Optional feedback can only inhibit the existing base-policy/merge gates, never relax them. */
-export function validationAllowsPlanning(report, policyHash, workflow) {
+export function validationAllowsPlanning(
+  report,
+  policyHash,
+  workflow,
+  planHash,
+  repository,
+) {
   if (
     !report ||
     report.mode !== "skip-validation" ||
     report.schemaVersion !== 1 ||
     report.policyHash !== policyHash ||
     report.workflow !== workflow ||
+    !HASH.test(planHash ?? "") ||
+    report.planHash !== planHash ||
+    typeof repository !== "string" ||
+    report.repository !== repository ||
     report.safe !== true ||
     report.fallback !== false ||
     !Array.isArray(report.issues) ||

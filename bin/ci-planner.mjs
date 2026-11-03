@@ -44,7 +44,7 @@ const help =
   "ci-planner discover [--root DIR] [--ref HEAD|SHA] [--base SHA]\n" +
   "ci-planner advise --input snapshot.json | --repository OWNER/REPO [--workflow ci.yml] [--limit 20]\n" +
   "ci-planner attest --repository OWNER/REPO --tested SHA --run-id ID --environment HASH --signing-key-file FILE --full-run\n" +
-  "ci-planner reuse --repository OWNER/REPO --target SHA --environment HASH --input receipt.json [--github-output]\n" +
+  "ci-planner reuse --repository OWNER/REPO --base BEFORE_SHA --target SHA --environment HASH --input receipt.json [--github-output]\n" +
   "ci-planner plan --base SHA --head SHA [--merge SHA] [--root DIR] [--repository OWNER/REPO]\n" +
   "  [--event pull_request] [--workflow .github/workflows/ci.yml] [--enforce] [--force] [--github-output] [--audit-repo] [--validation-input FILE]\n\n" +
   "Result commands accept --format json|markdown and --summary (append a GitHub job summary).\n" +
@@ -190,7 +190,14 @@ try {
   } else if (command === "reuse") {
     const opts = parseOptions(
       args,
-      ["--root", "--repository", "--target", "--environment", "--input"],
+      [
+        "--root",
+        "--repository",
+        "--base",
+        "--target",
+        "--environment",
+        "--input",
+      ],
       ["--github-output"],
     );
     if (
@@ -209,10 +216,28 @@ try {
     } catch {
       /* Missing/bad receipt always runs fresh. */
     }
+    let baseSha = opts["--base"];
+    if (opts["--github-output"]) {
+      let event = null;
+      try {
+        event = readJSONFile(process.env.GITHUB_EVENT_PATH);
+      } catch {
+        /* Run fresh without trusted push evidence. */
+      }
+      if (
+        event?.before !== baseSha ||
+        event?.after !== opts["--target"] ||
+        event?.repository?.full_name !== opts["--repository"] ||
+        event.forced !== false ||
+        event.deleted !== false
+      )
+        baseSha = null;
+    }
     const result = await verifyReuse({
       root: opts["--root"] ?? ".",
       repository: opts["--repository"],
       targetSha: opts["--target"],
+      baseSha,
       environmentHash: opts["--environment"],
       receipt,
     });
@@ -369,7 +394,21 @@ try {
       } catch {
         /* Require a full run. */
       }
-      if (!validationAllowsPlanning(feedback, plan.policyHash, workflow)) {
+      // Feedback describes full shadow execution. Compare with that exact plan,
+      // not its enforce-mode hash, which intentionally binds different decisions.
+      const shadowPlan =
+        plan.mode === "shadow"
+          ? plan
+          : planRepository({ ...planOptions, enforce: false });
+      if (
+        !validationAllowsPlanning(
+          feedback,
+          shadowPlan.policyHash,
+          workflow,
+          shadowPlan.planHash,
+          shadowPlan.identity.repository,
+        )
+      ) {
         plan = planRepository({ ...planOptions, validationFallback: true });
       }
     }

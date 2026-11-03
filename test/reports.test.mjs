@@ -53,6 +53,34 @@ test("Markdown distinguishes shadow suggestions from actual decisions and leaves
   assert.match(renderMarkdown(enforced), /Run: 0 · Skip: 1/);
 });
 
+test("timing summary counts cannot inject Markdown or HTML through report input", (t) => {
+  const f = fixture(t),
+    input = path.join(f.root, "report.json"),
+    summary = path.join(f.root, "summary.md");
+  const report = {
+    schemaVersion: 1,
+    mode: "read-only-audit",
+    repository: "owner/repo",
+    runs: [],
+    findings: [],
+    totals: {
+      workerSeconds: 0,
+      completeRuns: "\n\n![passed](https://evil.example/ping)\n<!--",
+    },
+  };
+  assert.throws(() => renderMarkdown(report), /Invalid timing report/);
+  fs.writeFileSync(input, JSON.stringify(report));
+  fs.writeFileSync(summary, "previous summary\n");
+  const result = spawnSync(
+    process.execPath,
+    [cli, "report", "--input", input, "--summary"],
+    { encoding: "utf8", env: { ...process.env, GITHUB_STEP_SUMMARY: summary } },
+  );
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, "");
+  assert.equal(fs.readFileSync(summary, "utf8"), "previous summary\n");
+});
+
 test("reports escape HTML, table delimiters, links and mentions without exposing unknown command fields", () => {
   const report = plan();
   const malicious = "<script>@owners|[click](javascript:bad)\n";

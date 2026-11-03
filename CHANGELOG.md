@@ -1,6 +1,10 @@
 # Changelog
 
-## 0.3.0 — 2026-11-02
+## 0.3.0 — unpublished
+
+- Harden reuse trust to the target first-parent contract and reject skipped steps.
+- Keep oversized dependency inputs as explicit unknowns instead of failing the scan; distinguish Git output bounds and missing evidence.
+- Reject invalid summary counts, bind feedback to repository and exact shadow plan, and document GitHub bare-URL autolinks.
 
 - Add bounded Markdown reports for plans, completeness audits, timing observations, setup previews and fix receipts. Existing result commands keep JSON by default.
 - Show readable GitHub job summaries from the Action, with optional completeness evidence that cannot change selection or plan hashes.

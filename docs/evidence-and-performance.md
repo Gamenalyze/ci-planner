@@ -24,7 +24,7 @@ For example, jobNames may contain `{".github/workflows/ci.yml#test":["test (22)"
 
 `--check` exits nonzero on failed, missing, skipped, cancelled, unfinished, mismatched or ambiguous evidence. A failed job that the plan suggested skipping produces `failed-suggested-skip`. One passing run is an observation, not proof of complete inputs.
 
-Save each JSON validation report in owner-controlled storage to build a history. A trusted CI coordinator can supply its latest report using `plan --workflow .github/workflows/ci.yml --validation-input validation.json` or the Action's validation-input. An unreadable, mismatched or unsafe report forces all jobs to run. It also changes the plan hash. Passing feedback does not enable enforcement or replace the existing base-policy and exact-merge gates. This is an explicit integration: CI Planner does not keep a shared database or fetch a report by itself. A report digest detects accidental changes; it is not a signature. Never let PR-controlled files replace the owner's feedback history.
+Save each JSON validation report in owner-controlled storage to build a history. A trusted CI coordinator can supply a report for the exact repository and shadow plan using `plan --workflow .github/workflows/ci.yml --validation-input validation.json` or the Action's validation-input. An unreadable, mismatched or unsafe report forces all jobs to run. Repository, policy hash, workflow and exact shadow-plan hash must match; a report for another source revision cannot clear the fallback. Enforcement requests are compared to their equivalent shadow plan, since enforce-mode hashes bind different decisions. It also changes the plan hash. Passing feedback does not enable enforcement or replace the existing base-policy and exact-merge gates. This is an explicit integration: CI Planner does not keep a shared database or fetch a report by itself. A report digest detects accidental changes; it is not a signature. Never let PR-controlled files replace the owner's feedback history.
 
 ## Discover JS/TS dependencies
 
@@ -36,13 +36,13 @@ Each package includes suggestedInputs and dependencies. Every inputsComplete val
 
 JSONC, unsupported workspace patterns, dynamic imports, TS aliases, unresolved modules and runtime file/network access remain warnings. The scan is an over-approximation, not a JavaScript parser or a proof that all inputs were found. Build config files appear as shared inputs; their code is never evaluated. Generated files and custom resolution need owner review.
 
-Limits: 20,000 tracked paths, 2,000 readable text files, 500 packages, 256 KiB per text file and 16 MiB of source in total. Symlinks and submodules are not followed. Out-of-bound evidence stops discovery.
+Limits: 20,000 tracked paths, 2,000 readable text files, 500 packages, 256 KiB per text file and 16 MiB of source in total. Blob sizes are listed before reading. Larger lockfiles or generated source stay in the inventory as unreadable, with oversized-text-file warnings; they do not stop the scan. After the readable-file or source-byte budget is reached, remaining files stay unread with text-file-budget or source-byte-budget warnings. The report includes the total unreadableFiles count even when the warning list is capped. The 20,000-path inventory bound still stops discovery. Symlinks and submodules are not followed.
 
 ## Reuse a verified PR result on main
 
 Reuse is a separate opt-in tool. The ordinary planner still runs every job on push events. A green run with the same head is insufficient: it does not prove what was checked out, which runtime was used, whether a gate skipped tests, or whether artifacts are needed.
 
-The owner must commit `.ci-planner-reuse.json` on the default branch:
+The owner must commit `.ci-planner-reuse.json` on the default branch before the change being validated:
 
 ```json
 {
@@ -63,21 +63,21 @@ The hermetic assertion is an owner decision: approve only checks whose results d
 
 Use a separate trusted coordinator to observe an ungated successful PR run, its actual checkout, and a measured environment digest. Include resolved action and container digests, runner/toolchain identity, architecture and dependency installation inputs in that digest; hash canonical non-secret identities, never credentials. This release verifies the digest but does not measure an arbitrary runtime for you. If that identity is unavailable, run fresh.
 
-The coordinator must not execute PR code, parse private keys with PR dependencies, or treat unsigned artifacts as tested-checkout facts. It should use a separately pinned installation of CI Planner and an independent protected job/key store. A workflow_run trigger alone does not make untrusted artifacts safe. Rotate a key by committing the trusted public-key set.
+The coordinator must not execute PR code, parse private keys with PR dependencies, or treat unsigned artifacts as tested-checkout facts. It should use a separately pinned installation of CI Planner and an independent protected job/key store. A workflow_run trigger alone does not make untrusted artifacts safe. Rotate a key by committing the trusted public-key set. A newly added key cannot authorize reuse for that same change; it becomes trusted for later merges.
 
     ci-planner attest --root /trusted/git-objects --repository OWNER/REPO --tested TESTED_SHA --run-id RUN_ID --environment ENVIRONMENT_HASH --signing-key-file /protected/ed25519.pem --full-run > receipt.json
 
-Signing is explicit and forbidden in pull_request and pull_request_target contexts. The coordinator's --tested, --environment and --full-run values are trusted assertions. CI Planner verifies a successful unprivileged PR run and its complete latest attempt, requires every job to succeed uniquely, and binds that inventory, actual tested commit/tree, runtime digest and issuance time into an Ed25519 signature. It rereads the run to detect attempt drift. It does not infer ungated execution from a green conclusion.
+Signing is explicit and forbidden in pull_request and pull_request_target contexts. The coordinator's --tested, --environment and --full-run values are trusted assertions. CI Planner verifies a successful unprivileged PR run and its complete latest attempt, requires every job and every reported step to succeed uniquely (skipped steps are refused), and binds that inventory, actual tested commit/tree, runtime digest and issuance time into an Ed25519 signature. It rereads the run to detect attempt drift. It does not infer ungated execution from a green conclusion.
 
 On the main push, supply the independently measured current environment and the receipt:
 
-    ci-planner reuse --root /path/to/repo --repository OWNER/REPO --target MAIN_SHA --environment CURRENT_ENVIRONMENT_HASH --input receipt.json --format markdown
+    ci-planner reuse --root /path/to/repo --repository OWNER/REPO --base BEFORE_PUSH_SHA --target MAIN_SHA --environment CURRENT_ENVIRONMENT_HASH --input receipt.json --format markdown
 
-Verification checks the signature against the current default branch's public keys, owner opt-in, expected workflow and exact job names, age (at most 24 hours), identical environment digest and identical **whole Git tree**. Source, lockfiles, workflow and reuse policy must all match. It also checks the remote default-branch head, rereads the live latest PR attempt and all jobs, then checks the branch again. Fetch both target and tested commits first.
+The caller must provide --base as the trusted default-branch tip before the push, rather than infer it from PR files. Verification requires that base to equal targetSha^1 and reads the owner contract from it, before the merged change, and checks the signature against those prior public keys, owner opt-in, expected workflow and exact job names, age (at most 24 hours), identical environment digest and identical **whole Git tree**. Source, lockfiles, workflow and reuse policy must all match. It also checks the remote default-branch head, rereads the live latest PR attempt and all jobs, then checks the branch again. Fetch the target, its first parent, and the tested commit first. A missing parent or prior contract runs fresh. This single-change model supports a two-parent merge or a single squash commit. A multi-commit push whose first parent differs from the trusted pre-push tip runs fresh.
 
 The JSON result has reusable=false and run=true on any uncertainty, including a missing receipt, changed run attempt, unavailable GitHub metadata or unknown environment. Evidence is a point-in-time observation; if it changes before consumption, run again. Receipts expire. No artifacts are restored and no GitHub check is marked successful.
 
-For an explicit main-push integration, add --github-output only when GITHUB_EVENT_NAME, GITHUB_REPOSITORY and GITHUB_SHA describe that exact push. Keep continue-on-error on the verification step and retain the fallback `steps.reuse.outputs.ready != 'true' || steps.reuse.outputs.run != 'false'` on validation. The verifier also requires target to be the live default-branch head. Never gate release/deployment jobs with this result. Existing required-check and acceptance rules still apply.
+For an explicit main-push integration, add --github-output only when GITHUB_EVENT_NAME, GITHUB_REPOSITORY and GITHUB_SHA describe that exact push. The CLI also requires the GitHub push payload in GITHUB_EVENT_PATH to confirm before, after and repository, and refuses reuse after forced or deleted pushes. Missing or mismatched push evidence runs fresh. Keep continue-on-error on the verification step and retain the fallback `steps.reuse.outputs.ready != 'true' || steps.reuse.outputs.run != 'false'` on validation. The verifier also requires target to be the live default-branch head. Never gate release/deployment jobs with this result. Existing required-check and acceptance rules still apply.
 
 ## Review CI performance
 

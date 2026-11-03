@@ -192,7 +192,10 @@ function timingView(report) {
   if (
     !report.totals ||
     !Number.isFinite(report.totals.workerSeconds) ||
-    report.totals.workerSeconds < 0
+    report.totals.workerSeconds < 0 ||
+    !Number.isSafeInteger(report.totals.completeRuns) ||
+    report.totals.completeRuns < 0 ||
+    report.totals.completeRuns > runs.length
   )
     throw Error("Invalid timing report");
   return [

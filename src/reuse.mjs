@@ -129,9 +129,7 @@ async function successfulRun(repository, id, read) {
         !j.steps.length ||
         j.steps.length > 1000 ||
         j.steps.some(
-          (s) =>
-            s.status !== "completed" ||
-            !["success", "skipped"].includes(s.conclusion),
+          (s) => s.status !== "completed" || s.conclusion !== "success",
         ) ||
         !Number.isFinite(Date.parse(j.completed_at))
       );
@@ -267,6 +265,7 @@ export async function verifyReuse(
     root = ".",
     repository,
     targetSha,
+    baseSha,
     environmentHash,
     receipt,
     now = Date.now(),
@@ -278,20 +277,36 @@ export async function verifyReuse(
     mode: "verified-reuse",
     repository,
     targetSha,
+    baseSha,
     reusable: false,
     run: true,
     reason: "fresh-validation-required",
     limitations: [
       "Only an owner-signed full-run statement can bind tested checkout and environment facts; the API does not prove them.",
       "Whole-tree equivalence includes source, lockfiles, workflow and policy. No artifacts are restored or checks marked successful.",
-      "Reuse is valid only for hermetic, artifact-free checks explicitly approved on the current default branch. Unknown evidence runs fresh.",
+      "Reuse trust comes from the target commit's first parent, before the merged change. Unknown evidence runs fresh.",
     ],
   };
   try {
-    if (!validRepository(repository) || !HASH.test(environmentHash ?? ""))
+    if (
+      !validRepository(repository) ||
+      !HASH.test(environmentHash ?? "") ||
+      !SHA.test(baseSha ?? "")
+    )
       throw Error("identity");
-    const tree = commitTree(root, targetSha),
-      contract = contractAt(root, targetSha);
+    const tree = commitTree(root, targetSha);
+    // Never let a merged PR nominate the key that authorizes its own result.
+    // A missing/shallow first parent or absent prior contract requires a fresh run.
+    const contractSha = gitRead(root, [
+      "rev-parse",
+      "--verify",
+      targetSha + "^1",
+    ]).trim();
+    // The caller supplies the trusted pre-push default-branch tip. Do not infer
+    // it from a multi-commit push, whose first parent can already be PR-controlled.
+    if (baseSha !== contractSha)
+      throw Error("Target is not a single commit from the trusted base");
+    const contract = contractAt(root, contractSha);
     if (
       receipt?.schemaVersion !== 1 ||
       receipt.mode !== "validation-receipt" ||
@@ -363,6 +378,7 @@ export async function verifyReuse(
       sourceRunAttempt: s.runAttempt,
       treeSha: tree,
       workflow: s.workflow,
+      contractSha,
     };
   } catch {
     // Do not print untrusted server errors, key bytes, filenames or raw receipt contents.
