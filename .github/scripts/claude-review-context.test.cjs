@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { collectContext, hasContextRead } = require('./claude-review-context.cjs');
+const { collectContext, serializeContext, hasContextRead } = require('./claude-review-context.cjs');
 
 const env = { GITHUB_REPOSITORY: 'example/repo', PR_NUMBER: '7', HEAD_SHA: 'a'.repeat(40), GH_TOKEN: 'fixture-secret', GITHUB_API_URL: 'https://api.github.test' };
 const pr = { head: { sha: env.HEAD_SHA }, base: { sha: 'b'.repeat(40), ref: 'main' }, title: 'Fix trust boundary', body: 'Acceptance: trust the pre-merge base. Fixes #12', html_url: 'https://github.com/example/repo/pull/7', labels: [], user: { login: 'author' } };
@@ -123,12 +123,32 @@ test('collects related PR metadata without treating it as an issue endpoint', as
 
 test('a context receipt alone cannot qualify a review without a successful Read', () => {
   const file = '/runner-temp/claude-review-context.json';
+  const packet = '{\n  "requirements": "trusted base",\n  "gaps": []\n}\n';
   const read = { type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Read', id: 'tool-1', input: { file_path: file } }] } };
-  const result = { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'tool-1', content: 'packet' }] } };
-  assert.equal(hasContextRead([{ type: 'result', subtype: 'success', result: 'Context packet: sha256:abc' }], file), false);
-  assert.equal(hasContextRead([read], file), false);
-  assert.equal(hasContextRead([read, { ...result, message: { content: [{ ...result.message.content[0], is_error: true }] } }], file), false);
-  assert.equal(hasContextRead([read, result], '/other.json'), false);
-  assert.equal(hasContextRead([read, result], file), true);
-  assert.equal(hasContextRead([{ type: 'user', message: { content: 'plain text' } }, read, result], file), true);
+  const result = { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'tool-1', content: '     1→{\n     2→  "requirements": "trusted base",\n     3→  "gaps": []\n     4→}' }] } };
+  assert.equal(hasContextRead([{ type: 'result', subtype: 'success', result: 'Context packet: sha256:abc' }], file, packet), false);
+  assert.equal(hasContextRead([read], file, packet), false);
+  assert.equal(hasContextRead([read, { ...result, message: { content: [{ ...result.message.content[0], is_error: true }] } }], file, packet), false);
+  assert.equal(hasContextRead([read, result], '/other.json', packet), false);
+  assert.equal(hasContextRead([read, result], file, packet), true);
+  assert.equal(hasContextRead([{ type: 'user', message: { content: 'plain text' } }, read, result], file, packet), true);
+  const partialRead = { type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Read', id: 'tool-1', input: { file_path: file, offset: 1, limit: 1 } }] } };
+  const partialResult = { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'tool-1', content: '     1→{' }] } };
+  assert.equal(hasContextRead([partialRead, partialResult], file, packet), false);
+  const truncated = structuredClone(result);
+  truncated.message.content[0].content = '1→{\n2→  "requirements": [truncated]\n3→  "gaps": []\n4→}';
+  assert.equal(hasContextRead([read, truncated], file, packet), false);
+  const continuation = structuredClone(result);
+  continuation.message.content[0].content = '2→  "requirements": "trusted base",\n3→  "gaps": []\n4→}';
+  assert.equal(hasContextRead([read, partialResult, continuation], file, packet), true);
+});
+
+test('large text is losslessly chunked below Read per-line truncation limits', () => {
+  const original = 'Untrusted "input"\n\\\u0000☀️'.repeat(1000);
+  const formatted = serializeContext({ body: original });
+  const parsed = JSON.parse(formatted);
+  assert.equal(parsed.body.format, 'text_chunks');
+  assert.equal(parsed.body.chunks.join(''), original);
+  assert.ok(formatted.split('\n').every(line => line.length < 1500));
+  assert.throws(() => serializeContext({ body: 'x'.repeat(600000) }), /exceeds 512 KB/);
 });

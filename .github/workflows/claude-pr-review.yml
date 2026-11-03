@@ -104,9 +104,11 @@ jobs:
             HEAD COMMIT: ${{ github.event.pull_request.head.sha }}
             CONTEXT FILE: ${{ steps.review_context.outputs.file }}
             CONTEXT SHA-256: ${{ steps.review_context.outputs.sha256 }}
+            CONTEXT LINES: ${{ steps.review_context.outputs.lines }}
 
             Your first tool call must use Read with file_path exactly equal to CONTEXT FILE.
-            Read the entire packet (continue with offsets if Read truncates it). It contains
+            Read every line of the packet (continue with offsets if Read truncates it).
+            Long source strings use ordered text_chunks; join their chunks in order. It contains
             PR intent, linked work/acceptance criteria, conversation, reviews and inline
             discussion, commit rationale, changed-file inventory, exact base/head and CI
             observations. Read its coverage.gaps and external_references. Private author/chat
@@ -123,7 +125,10 @@ jobs:
                when present. If a governing external/cross-repository source is unavailable,
                name that gap; a PR paraphrase is not the authoritative contract.
             3. Use gh pr diff ${{ github.event.pull_request.number }} and inspect surrounding
-               source, callers and downstream consumers. Trace trust/data/control flow across
+               source, callers and downstream consumers. Inspect every changed file, including
+               tests; account for every file in the summary. If any changed file cannot be
+               inspected, report incomplete coverage and omit the completion marker.
+               Trace trust/data/control flow across
                files: where trusted configuration comes from (base vs PR/merge), identity and
                receipt binding, skipped/failed/missing evidence, fail-closed paths, realistic
                file-size/resource limits, rendered Markdown/HTML/output sinks, compatibility,
@@ -216,8 +221,10 @@ jobs:
             const output = JSON.parse(fs.readFileSync(process.env.EXECUTION_FILE, 'utf8'));
             const messages = Array.isArray(output) ? output : [output];
             const { hasContextRead } = require('./.github/scripts/claude-review-context.cjs');
-            if (!hasContextRead(messages, process.env.CONTEXT_FILE))
-              throw new Error('Claude did not successfully read the review context packet.');
+            const packet = fs.readFileSync(process.env.CONTEXT_FILE, 'utf8');
+            const digest = require('node:crypto').createHash('sha256').update(packet).digest('hex');
+            if (digest !== process.env.CONTEXT_SHA256 || !hasContextRead(messages, process.env.CONTEXT_FILE, packet))
+              throw new Error('Claude did not successfully read every line of the unchanged review context packet.');
             const results = messages.filter(row => row.type === 'result');
             if (!results.some(row => row.subtype === 'success' && row.is_error === false))
               throw new Error('Claude execution did not finish successfully.');

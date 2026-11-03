@@ -138,26 +138,63 @@ async function collectContext(env, request = fetch) {
   return context;
 }
 
-function hasContextRead(messages, file) {
+function serializeContext(context) {
+  function wrap(value) {
+    if (typeof value === 'string' && JSON.stringify(value).length > 1200) {
+      const chunks = [];
+      let chunk = '', length = 0;
+      for (const char of value) {
+        const size = JSON.stringify(char).length - 2;
+        if (length + size > 1000) { chunks.push(chunk); chunk = ''; length = 0; }
+        chunk += char; length += size;
+      }
+      if (chunk) chunks.push(chunk);
+      return { format: 'text_chunks', chunks };
+    }
+    if (Array.isArray(value)) return value.map(wrap);
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, wrap(item)]));
+    return value;
+  }
+  const content = JSON.stringify(wrap(context), null, 2) + '\n';
+  if (Buffer.byteLength(content) > 512000) throw new Error('Formatted review context exceeds 512 KB.');
+  return content;
+}
+
+function hasContextRead(messages, file, content) {
+  if (typeof content !== 'string' || !content.length) return false;
+  const expected = content.replace(/\n$/, '').split('\n');
+  const seen = new Set();
   const blocks = row => Array.isArray(row.message?.content) ? row.message.content : [];
   const reads = new Set(messages.flatMap(row => row.type === 'assistant'
     ? blocks(row).filter(block => block.type === 'tool_use' && block.name === 'Read' && block.input?.file_path === file).map(block => block.id)
     : []));
-  return messages.some(row => row.type === 'user' && blocks(row).some(block =>
-    block.type === 'tool_result' && reads.has(block.tool_use_id) && !block.is_error));
+  for (const row of messages.filter(row => row.type === 'user')) {
+    for (const block of blocks(row)) {
+      if (block.type !== 'tool_result' || !reads.has(block.tool_use_id) || block.is_error) continue;
+      const output = typeof block.content === 'string' ? block.content
+        : Array.isArray(block.content) ? block.content.filter(item => item.type === 'text').map(item => item.text).join('\n') : '';
+      // Read uses cat-n-style line prefixes. Count only complete, matching lines
+      // actually returned by the tool; requested offsets/limits are not evidence.
+      for (const match of output.matchAll(/^[ \t]*(\d+)[→\t](.*)$/gm)) {
+        const line = Number(match[1]);
+        if (line >= 1 && line <= expected.length && match[2] === expected[line - 1]) seen.add(line);
+      }
+    }
+  }
+  return seen.size === expected.length;
 }
 
 async function main() {
   const context = await collectContext(process.env);
-  const content = JSON.stringify(context, null, 2) + '\n';
-  if (Buffer.byteLength(content) > 512000) throw new Error('Formatted review context exceeds 512 KB.');
+  const content = serializeContext(context);
   const file = path.join(process.env.RUNNER_TEMP, 'claude-review-context.json');
   fs.writeFileSync(file, content, { mode: 0o600 });
   const sha256 = crypto.createHash('sha256').update(content).digest('hex');
   fs.appendFileSync(process.env.GITHUB_OUTPUT, `file=${file}\nsha256=${sha256}\n`);
+  fs.appendFileSync(process.env.GITHUB_OUTPUT, `lines=${content.trimEnd().split('\n').length}\n`);
   // Do not print PR text, personal data, or raw API payloads to Actions logs.
   console.log(`Collected PR review context: ${context.changed_files.length} files, ${context.linked_work.length} linked work items, ${context.coverage.gaps.length} explicit gaps.`);
 }
 
-module.exports = { collectContext, hasContextRead };
+module.exports = { collectContext, serializeContext, hasContextRead };
 if (require.main === module) main().catch(error => { console.error(`::error::${error.message}`); process.exitCode = 1; });
