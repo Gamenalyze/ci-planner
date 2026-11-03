@@ -427,30 +427,41 @@ test("PR policy changes cannot enable skipping and CLI outputs are bound to veri
     assert(Object.values(plan.jobs).every((job) => job.run));
     const output = path.join(root, "outputs");
     const cli = new URL("../bin/ci-planner.mjs", import.meta.url).pathname;
-    const result = spawnSync(
-      process.execPath,
-      [
-        cli,
-        "plan",
-        "--root",
-        root,
-        "--base",
-        baseSha,
-        "--head",
-        headSha,
-        "--merge",
-        mergeSha,
-        "--workflow",
-        workflow,
-        "--enforce",
-        "--github-output",
-      ],
-      { encoding: "utf8", env: { ...process.env, GITHUB_OUTPUT: output } },
-    );
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(fs.readFileSync(output, "utf8"), /ready=true/);
-    assert.match(fs.readFileSync(output, "utf8"), /"tests":true/);
-    fs.unlinkSync(output);
+    for (const callerEvent of ["push", "pull_request"]) {
+      const result = spawnSync(
+        process.execPath,
+        [
+          cli,
+          "plan",
+          "--event",
+          "pull_request",
+          "--root",
+          root,
+          "--base",
+          baseSha,
+          "--head",
+          headSha,
+          "--merge",
+          mergeSha,
+          "--workflow",
+          workflow,
+          "--enforce",
+          "--github-output",
+        ],
+        {
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            GITHUB_EVENT_NAME: callerEvent,
+            GITHUB_OUTPUT: output,
+          },
+        },
+      );
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(fs.readFileSync(output, "utf8"), /ready=true/);
+      assert.match(fs.readFileSync(output, "utf8"), /"tests":true/);
+      fs.unlinkSync(output);
+    }
     const bad = spawnSync(
       process.execPath,
       [
