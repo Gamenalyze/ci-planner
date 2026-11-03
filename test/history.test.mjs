@@ -45,6 +45,10 @@ test("checkout logs bind one complete pinned-checkout interval and reject missin
 });
 test("workflow evidence requires explicit matrix coverage, ungated jobs/steps and actual required commands", () => {
   assert.deepEqual(inspectFullWorkflow(source, contract), []);
+  assert.throws(
+    () => inspectFullWorkflow(source, { workflow, jobs: { tests: null } }),
+    /Invalid history job contract/,
+  );
   for (const changed of [
     source.replace("    strategy:", "    if: false\n    strategy:"),
     source.replace("      - run:", "      - if: false\n        run:"),
@@ -127,11 +131,20 @@ test("bounded historical replay separates known success, failed suggested skips 
         },
       ],
     }));
+  let inventories = 0;
   const read = async (endpoint) => {
     if (endpoint.includes("/pulls?"))
-      return [{ number: 1, merged_at: end, head: { sha: head } }];
-    if (endpoint.includes("/workflows/"))
+      return [
+        { number: 1, merged_at: end, head: { sha: head } },
+        ...(variant === "budget"
+          ? [{ number: 2, merged_at: start, head: { sha: head } }]
+          : []),
+      ];
+    if (endpoint.includes("/workflows/")) {
+      if (variant === "budget" && ++inventories > 1)
+        throw Error("History request budget exceeded");
       return { total_count: 1, workflow_runs: [meta] };
+    }
     if (endpoint.includes("/jobs?"))
       return {
         total_count: 2,
@@ -157,12 +170,12 @@ test("bounded historical replay separates known success, failed suggested skips 
       },
     },
   };
-  const replay = () =>
+  const replay = (limit = 1) =>
     replayHistory(
       {
         root: f.root,
         repository: "owner/repo",
-        limit: 1,
+        limit,
         contract: fullContract,
       },
       { read, log },
@@ -180,6 +193,14 @@ test("bounded historical replay separates known success, failed suggested skips 
   assert.equal(report.summary.unknownAttempts, 1);
   assert.equal(report.summary.failedSuggestedSkips, 1);
   assert.equal(report.summary.candidateWorkerSeconds, 0);
+  variant = "budget";
+  inventories = 0;
+  report = await replay(2);
+  assert.equal(report.summary.verifiedAttempts, 1);
+  assert.equal(report.summary.unknownAttempts, 1);
+  assert.equal(report.summary.candidateWorkerSeconds, 40);
+  assert.equal(report.selection.attemptsTruncated, true);
+  assert(report.observations[1].issues.includes("run-inventory-unavailable"));
   for (const v of ["partial", "missing-log"]) {
     variant = v;
     report = await replay();

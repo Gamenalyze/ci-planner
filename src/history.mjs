@@ -93,6 +93,9 @@ function contractCheck(contract) {
   const names = new Set();
   for (const [id, job] of Object.entries(contract.jobs)) {
     if (
+      !job ||
+      typeof job !== "object" ||
+      Array.isArray(job) ||
       !/^[A-Za-z_][A-Za-z0-9_-]*$/.test(id) ||
       !Array.isArray(job.names) ||
       !job.names.length ||
@@ -399,9 +402,23 @@ export async function replayHistory(
       head_sha: pr.head.sha,
       per_page: "100",
     });
-    const listed = await read(
-      `repos/${repository}/actions/workflows/${encodeURIComponent(contract.workflow.split("/").at(-1))}/runs?${query}`,
-    );
+    let listed;
+    try {
+      listed = await read(
+        `repos/${repository}/actions/workflows/${encodeURIComponent(contract.workflow.split("/").at(-1))}/runs?${query}`,
+      );
+    } catch {
+      observations.push({
+        pr: pr.number,
+        verified: false,
+        issues: ["run-inventory-unavailable"],
+        candidateJobs: 0,
+        candidateWorkerSeconds: 0,
+        failedSuggestedSkips: 0,
+      });
+      truncated = true;
+      break;
+    }
     if (
       !Array.isArray(listed.workflow_runs) ||
       listed.workflow_runs.length > 100
