@@ -37,6 +37,12 @@ test("historical Markdown exposes incomplete collection, unknown evidence and li
   delete report.selection;
   assert.match(renderMarkdown(report), /Partial collection/);
   assert.match(renderMarkdown(report), /Attempts truncated \| unknown/);
+  report.observations = Array.from({ length: 120 }, () => report.observations[0]);
+  const bounded = renderMarkdown(report);
+  assert.match(bounded, /70 more rows omitted; see the JSON report/);
+  assert.match(bounded, /Partial collection/);
+  assert.match(bounded, /Missing logs remain unknown/);
+  assert(Buffer.byteLength(bounded) < 96 * 1024);
 });
 const plan = (extra = {}) =>
   buildPlan({

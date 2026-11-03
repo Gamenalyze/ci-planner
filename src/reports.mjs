@@ -502,7 +502,7 @@ export function renderMarkdown(report) {
           "Failed suggested skips",
           "Issues",
         ],
-        list(report.observations, 100).map((o) => [
+        list(report.observations).map((o) => [
           o.pr,
           String(o.runId ?? "unknown") + " / " + String(o.attempt ?? "unknown"),
           o.verified ? "verified checkout and full attempt" : "unknown",
