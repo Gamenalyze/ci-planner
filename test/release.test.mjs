@@ -196,3 +196,46 @@ test("npm privileged job rejects fork and PR workflow-run sources before any che
   assert.equal(check({ ...canonical, conclusion: "failure" }), false);
   assert.equal(check(canonical, "success", "attacker/fork"), false);
 });
+
+import { readPublishedPackage } from "../scripts/publish-npm.mjs";
+test("registry verification uses fresh exact-version reads instead of a stale packument", async () => {
+  const requests = [];
+  const fetcher = async (url, options) => {
+    requests.push({ url: new URL(url), options });
+    return new Response(
+      JSON.stringify({ name: "@gamenalyze/ci-planner", version: "0.4.1" }),
+    );
+  };
+  for (let i = 0; i < 2; i++)
+    assert.equal(
+      (await readPublishedPackage("@gamenalyze/ci-planner", "0.4.1", fetcher))
+        .version,
+      "0.4.1",
+    );
+  assert.equal(requests[0].url.pathname, "/@gamenalyze%2fci-planner/0.4.1");
+  assert.notEqual(requests[0].url.search, requests[1].url.search);
+  assert.equal(requests[0].options.cache, "no-store");
+  assert.equal(requests[0].options.headers["Cache-Control"], "no-cache");
+});
+test("registry not-found remains unknown while invalid or unavailable evidence fails", async () => {
+  assert.equal(
+    await readPublishedPackage(
+      "@gamenalyze/ci-planner",
+      "0.4.1",
+      async () => new Response(null, { status: 404 }),
+    ),
+    null,
+  );
+  for (const response of [
+    new Response("not json"),
+    new Response("unavailable", { status: 503 }),
+    new Response("x".repeat(4 * 1024 * 1024 + 1)),
+  ])
+    await assert.rejects(
+      readPublishedPackage(
+        "@gamenalyze/ci-planner",
+        "0.4.1",
+        async () => response,
+      ),
+    );
+});

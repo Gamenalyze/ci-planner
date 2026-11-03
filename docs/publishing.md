@@ -20,3 +20,6 @@ The install command after the first verified publication is `npx @gamenalyze/ci-
 
 
 If main has advanced before recovery, dispatch Publish CI Planner at the existing version tag (for example v0.4.0) with its successful main CI run ID, rather than running newer main source. Both channels independently verify that exact CI head and both Node lanes, that the version tag matches the package, and that its commit is an ancestor of main. The npm job may run after a Marketplace-only failure; it independently rechecks CI, release and bytes and cannot publish after an invalid source or failed CI. This keeps npm independent of a delayed Marketplace index without misattributing old package bytes to a newer source commit.
+
+
+Registry verification reads the exact version over HTTPS with a unique verification query and no-cache/no-store hints, a 20-second timeout and a 4 MiB response bound. This avoids stale negative packument caches observed during the first automatic npm publication. HTTP 404 remains an unverified/not-yet-visible record; other read failures and malformed/oversized records fail visibly. The published SHA-512 must still equal the verified release tarball, including on retry.
