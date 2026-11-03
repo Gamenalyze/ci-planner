@@ -6,7 +6,11 @@
 - Show readable GitHub job summaries from the Action, with optional completeness evidence that cannot change selection or plan hashes.
 - Add guided init previews and explicit exclusive writes for an advisory report workflow and an incomplete shadow policy. Existing policies and CI stay in place.
 - Add offline fix previews and explicit local-only draft PR publication for supported missing checks. Exact default-branch binding, branch-collision refusal and drift checks protect existing refs.
-- Document all new commands, APIs, permissions, review steps and rollback. No model calls, hosted backend, dependency inference, general optimization rewrites or cross-run reuse are introduced.
+- Compare shadow suggestions with explicit full-run observations; missing or unsafe optional feedback forces all planner jobs to run.
+- Add advisory JS/TS workspace, package, literal import and TypeScript reference discovery; inferred scopes never assert complete inputs.
+- Add owner-signed full-run attestations and explicit PR-to-main reuse verification with complete-tree, environment, expiry, default-branch and live-attempt checks. Missing evidence always runs fresh.
+- Add timing advice for uneven shards, repeated installs, cache observations and late-finishing jobs. No savings or billing claims.
+- Document all commands, coordinator trust boundaries, APIs, permissions, review steps and rollback. No model calls, hosted backend or general optimization rewrites are introduced.
 
 ## 0.2.1 — 2026-11-02
 

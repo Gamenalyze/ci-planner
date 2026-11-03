@@ -301,6 +301,85 @@ function fixView(report) {
   ].join("\n");
 }
 
+function evidenceView(report) {
+  if (report.mode === "skip-validation")
+    return [
+      "## Skip decision validation",
+      "",
+      report.safe === true
+        ? "Observed full run passed; this does not enable enforcement."
+        : "**Require full validation: failed, missing or uncertain evidence.**",
+      "",
+      table(
+        ["Job", "Suggestion", "Observed result"],
+        list(report.decisions).map((d) => [d.job, d.candidate, d.conclusion]),
+      ),
+      "",
+      table(
+        ["Issue", "Job"],
+        list(report.issues).map((d) => [d.reason, d.job]),
+      ),
+    ].join("\n");
+  if (report.mode === "dependency-discovery")
+    return [
+      "## Repository dependency discovery",
+      "",
+      "Commit: " + markdownCell(report.ref),
+      "",
+      "**Suggested scopes need owner review. Every input contract remains incomplete.**",
+      "",
+      table(
+        ["Package", "Dependencies", "Affected"],
+        list(report.packages, 500).map((p) => [
+          p.directory,
+          list(p.dependencies, 500).join(", "),
+          p.affected ? "Yes" : "No",
+        ]),
+      ),
+      "",
+      "Uncertain inputs: " + list(report.warnings, 2000).length,
+    ].join("\n");
+  if (report.mode === "performance-advice")
+    return [
+      "## CI performance advice",
+      "",
+      "Complete observed runs: " +
+        markdownCell(report.completeRuns) +
+        " / " +
+        markdownCell(report.observedRuns),
+      "",
+      table(
+        ["Observation", "Jobs", "Review"],
+        list(report.findings).map((f) => [
+          f.type,
+          list(f.jobs, 500).join(", "),
+          f.advice,
+        ]),
+      ),
+      "",
+      "Cache hit rate: " +
+        (report.cache?.hitRate === null
+          ? "Unknown; trusted instrumentation is needed."
+          : markdownCell(report.cache?.hitRate)),
+      "",
+      "Timing advice does not prove savings or change CI. Incomplete runs can skew the sample.",
+    ].join("\n");
+  if (report.mode === "verified-reuse")
+    return [
+      "## Verified validation reuse",
+      "",
+      report.reusable === true
+        ? "Signed evidence and the complete tested tree match the current default branch."
+        : "**Run fresh: required reuse evidence is missing, stale or different.**",
+      "",
+      "Decision: " + markdownCell(report.reason),
+      "",
+      "A trusted coordinator attests the actual tested checkout and environment. PR jobs must never hold its key.",
+      "Artifacts are not restored and no check is marked successful by this command.",
+    ].join("\n");
+  return "## Validation receipt\n\nSigned full-run evidence created. Keep signing keys outside PR execution.\n";
+}
+
 /**
  * Render a plan, completeness audit, timing audit/snapshot, setup or fix result.
  * Output stays below 96 KiB, far below GitHub's per-step summary limit.
@@ -324,6 +403,16 @@ export function renderMarkdown(report) {
     content = setupView(report);
   else if (["fix-preview", "fix-pr-created"].includes(report.mode))
     content = fixView(report);
+  else if (
+    [
+      "skip-validation",
+      "dependency-discovery",
+      "performance-advice",
+      "verified-reuse",
+      "validation-receipt",
+    ].includes(report.mode)
+  )
+    content = evidenceView(report);
   else if (report.repository && Array.isArray(report.runs))
     content = timingView(auditSnapshot(report));
   else throw Error("Unsupported CI Planner report type");

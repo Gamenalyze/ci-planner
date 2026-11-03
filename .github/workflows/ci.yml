@@ -75,3 +75,8 @@ jobs:
           "$task_dir/install/node_modules/.bin/ci-planner" audit-repo --root "$GITHUB_WORKSPACE" > "$task_dir/audit.json"
           "$task_dir/install/node_modules/.bin/ci-planner" report --input "$task_dir/audit.json" > "$task_dir/audit.md"
           grep -q 'Repository checks' "$task_dir/audit.md"
+          "$task_dir/install/node_modules/.bin/ci-planner" discover --root "$GITHUB_WORKSPACE" --format markdown > "$task_dir/dependencies.md"
+          node -e 'require("node:fs").writeFileSync(process.argv[1], JSON.stringify({schemaVersion:1, repository:"Gamenalyze/ci-planner", runs:[]}))' "$task_dir/snapshot.json"
+          "$task_dir/install/node_modules/.bin/ci-planner" advise --input "$task_dir/snapshot.json" --format markdown > "$task_dir/advice.md"
+          "$task_dir/install/node_modules/.bin/ci-planner" reuse --root "$GITHUB_WORKSPACE" --repository Gamenalyze/ci-planner --target "$GITHUB_SHA" --input "$task_dir/missing-receipt.json" --environment "$(node -e 'process.stdout.write("0".repeat(64))')" > "$task_dir/reuse.json"
+          node -e 'require("node:assert/strict").equal(require(process.argv[1]).run, true)' "$task_dir/reuse.json"

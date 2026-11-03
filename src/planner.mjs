@@ -379,6 +379,7 @@ export function buildPlan({
   event = "pull_request",
   enforce = false,
   force = false,
+  validationFallback = false,
   policy: rawPolicy = null,
   workflows,
   changes,
@@ -406,6 +407,7 @@ export function buildPlan({
   const graph = discoverWorkflows(workflows);
   const fullReasons = [];
   if (force) fullReasons.push("manual-full-validation");
+  if (validationFallback) fullReasons.push("skip-validation-requires-full-run");
   if (event !== "pull_request")
     fullReasons.push("event-requires-full-validation");
   if (!changes.length) fullReasons.push("empty-change-set");
@@ -522,6 +524,7 @@ export function buildPlan({
       workflows,
       changes,
       force,
+      validationFallback,
       canEnforce,
     }),
     fullReasons,
@@ -529,7 +532,7 @@ export function buildPlan({
     limitations: [
       "Input completeness is an owner declaration, not inferred proof.",
       "New jobs are discovered on every plan and run until scoped.",
-      "This release has no cross-run reuse, automatic workflow edits or hosted service.",
+      "Signed reuse is a separate explicit command; timing and discovery never authorize skips.",
     ],
     ...(enforce && !canEnforce
       ? {

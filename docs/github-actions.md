@@ -57,3 +57,7 @@ A head policy change cannot opt itself into skipping. Changes to .github or the 
 ## Rollback
 
 Set enforce to 'false', change the target branch policy to shadow, or remove job conditions to restore existing CI. Use --force for a local full plan. Schedule full CI independently so unchanged source still receives periodic validation. Do not move native builds to hosted runners to use this product.
+
+## Optional full-run feedback and reuse
+
+Set validation-input only to owner-controlled validation feedback. Missing or unsafe feedback forces full validation. It cannot enable enforcement. Signed PR-to-main reuse is a separate explicit CLI integration with a trusted coordinator, owner runtime contract and a run-fresh fallback. The normal Action still runs all jobs on push. See [evidence and performance](evidence-and-performance.md). Never give a signing key to PR execution.

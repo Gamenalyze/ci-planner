@@ -4,7 +4,7 @@ Free CI audits and conservative pull request plans for GitHub Actions. Version 0
 
 CI Planner helps you see where CI time goes and decide which jobs a PR needs. It rebuilds its job graph from committed workflows on each plan. It runs locally or on your runners. No account, model API key, paid tier or hosted service is required.
 
-**This is an early release. Start in shadow mode.** Skipping depends on owner-declared input contracts. This release does not infer every code dependency or reuse results across runs.
+**This is an early release. Start in shadow mode.** Skipping depends on owner-declared input contracts. Dependency discovery suggests JS/TS scopes for owner review. Cross-run reuse requires a signed full-run attestation, whole-tree equivalence and an explicit owner runtime contract.
 
 ## What works today
 
@@ -17,6 +17,10 @@ CI Planner helps you see where CI time goes and decide which jobs a PR needs. It
 - Read plan, audit and setup reports in Markdown or a GitHub job summary.
 - Preview advisory setup files with init, and write them only on request.
 - Preview supported missing-check fixes and explicitly publish them as draft PRs.
+- Compare skip suggestions with full runs and force fresh validation on unsafe feedback.
+- Discover JS/TS workspace dependencies, literal imports and TypeScript project references.
+- Verify signed PR-to-main reuse evidence against the complete tree, runtime contract and live latest run.
+- Review uneven shards, repeated installs, cache evidence and late-finishing jobs.
 
 Unknown inputs, structural changes, shared runtime/control changes, new jobs, hidden inputs and mutable action references keep validation fresh. An invalid or unavailable planner must make the workflow run its existing checks.
 
@@ -76,6 +80,7 @@ To enable skips, commit an input policy to the target branch, request `--enforce
 - [Release notes](CHANGELOG.md)
 - [Readable reports and GitHub job summaries](docs/reports.md)
 - [Guided setup and draft fix PRs](docs/onboarding-and-fixes.md)
+- [Skip validation, dependency discovery, signed reuse and performance advice](docs/evidence-and-performance.md)
 - [Complete example workflow](examples/pull-request.yml) and [example input policy](examples/policy.json)
 
 The [repository completeness audit](docs/repository-audit.md) finds missing or uncertain PR checks from source/config evidence. Run `node bin/ci-planner.mjs audit-repo --root /path/to/source`. It never edits CI by itself.
@@ -86,6 +91,6 @@ Public APIs and safety decisions have JSDoc and inline annotations in [the sourc
 
 The software is free under the [MIT license](LICENSE), for public and private repositories. Your existing runner, storage and network charges still apply. There is no required paid AI service.
 
-This version supports GitHub Actions workflow/job discovery, explicit file input contracts and additive draft PRs for supported missing checks. It does not yet provide source dependency inference, general optimization PRs, cross-run reuse, shard balancing or a hosted GitHub App. Timing history never grants permission to skip a job.
+This version supports GitHub Actions workflow/job discovery, explicit file input contracts and additive draft PRs for supported missing checks. It provides advisory JS/TS dependency discovery and timing advice, plus separately enabled signed PR-to-main reuse. It does not automatically balance shards, rewrite existing optimization policy or provide a hosted GitHub App. Timing history never grants permission to skip a job.
 
 It does not change release rules, coverage floors, signing rules, runner placement or branch protection. Native app compilation can remain on internal runners while source checks use other runners.

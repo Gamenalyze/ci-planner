@@ -24,7 +24,7 @@ ci-planner audit --input snapshot.json
 
 Live collection uses installed `gh` authentication and Actions read access. It reads up to five pages of 100 jobs for the exact listed attempt of each run. Earlier attempts and older runs are excluded. A changing inventory refuses collection; retry after the run completes.
 
-The versioned snapshot contains repository, selection, selected run fields and selected job fields. Raw step lists, logs, artifact payloads and runner identities are omitted. A snapshot can still reveal private repository and job names; store it within your own access controls.
+The versioned snapshot contains repository, selection, selected run fields and selected job fields. Bounded step name/status/timestamp metadata is retained for performance advice. Logs, step outputs, artifact payloads and runner identities are omitted. A snapshot can still reveal private repository and job names; store it within your own access controls.
 
 The audit reports totals, per-run observations, findings and limitations. `complete` means that this observed run attempt has all listed jobs and valid timing or skipped status; it does not mean that all repository history was collected.
 
@@ -69,7 +69,7 @@ The JSON plan has schema/engine versions, source identity, policy source/hash, p
 | reason        | Stable reason for that suggestion.             |
 | run           | Actual gate value. Always true in shadow mode. |
 
-The plan hash binds the engine version, source identities, normalized base policy, workflow sources, complete change list, force flag and enforcement mode. It is a digest, not a signature or cross-run proof. Do not accept a plan supplied by PR text or an untrusted artifact as authority.
+The plan hash binds the engine version, source identities, normalized base policy, workflow sources, complete change list, force/validation-fallback flags and enforcement mode. It is a digest, not a signature or cross-run proof. Do not accept a plan supplied by PR text or an untrusted artifact as authority.
 
 Action outputs are `run` (job-ID boolean map), `ready=true`, `mode`, and `plan_hash`. The composite Action exposes `plan-hash` for its digest. If generation fails, it exports no ready flag. Gate consumers must run on missing outputs.
 
@@ -90,6 +90,10 @@ plan also accepts --audit-repo to attach static completeness evidence from the e
 Exit 0 means the command produced a valid result. Exit 1 means invalid arguments, inaccessible evidence, unsupported inputs or a failed read. Missing evidence does not produce an empty skip map.
 
 Planning supports at most 20,000 tracked files, 100 workflow definitions, 1,000 jobs, 256 KiB per workflow, 64 KiB base policy, and 200 patterns per pattern list. Git reads and gh calls have per-call timeouts. Live audit collection is sequential and may take longer than one API call.
+
+## Evidence and performance commands
+
+Use validate for shadow/full-run feedback, discover for JS/TS workspace scope suggestions, advise for timing advice, attest in a separate trusted coordinator, and reuse for signed PR-to-main verification. See [input formats, trust boundaries and fallback integration](evidence-and-performance.md). All accept the standard JSON/Markdown and summary presentation options. Signing is explicit; the ordinary planner still runs on push.
 
 ## Troubleshooting
 
