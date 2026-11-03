@@ -30,16 +30,12 @@ Keep changes small and reviewable. CI runs syntax checks, tests, documentation l
 
 Use semantic versions. Keep package.json, package-lock.json, the exported engine version and CHANGELOG.md aligned. Tag only a tested commit. Production users should pin Actions to a reviewed SHA rather than relying on a mutable tag.
 
-### GitHub Marketplace publishing
+### Automatic GitHub, Marketplace and npm publication
 
-Publish the Action from a tested public release. The root action.yml supplies the listing name, description and branding; README.md supplies the product guide. The software remains free under MIT. Marketplace publication does not certify the code or change runner charges.
+Merge a reviewed version bump with a dated changelog section and passing Node 22/24 CI. After successful main push CI, Publish CI Planner creates the release at the tested commit, attaches the npm tarball and checksum, and verifies the public Marketplace version. The separate npm job publishes identical verified bytes through OIDC once the package's trusted publisher is configured. No persistent npm token belongs in GitHub.
 
-1. Merge the release PR after review and passing Node 22/24 CI, including the shipped Action and package smoke test.
-2. Draft a release at the exact tested main commit. For this patch, use tag v0.3.1 and title CI Planner v0.3.1. Copy the matching CHANGELOG.md entry into the release body.
-3. Select Publish this Action to the GitHub Marketplace. An organization owner must accept GitHub's Marketplace Developer Agreement if GitHub requests it; complete any sign-in or two-factor check in GitHub.
-4. Confirm that GitHub accepts the unique Action name. Choose Continuous integration as the primary category and Code quality as the secondary category when offered. Resolve any metadata errors before publishing.
-5. Publish the release, open the resulting Marketplace page, and verify that its installation instructions point to this repository and version. Record the actual listing URL only after it exists.
+The npm-release GitHub environment must restrict deployments to main and version tags, and the npm trusted publisher must bind this repository, release.yml and npm-release with publish permission. Enable NPM_PUBLISH_ENABLED only after verifying that configuration. Ordinary commits without version bumps do not create another release, and version tags never move.
 
-The GitHub release API and publishing a tag alone do not select Marketplace publication. Use the release form's Marketplace option. Do not claim a listing is live based only on a successful CI run or an existing release.
+A failed Marketplace check does not prove publication. Inspect its direct release-edit link if GitHub requests UI/2FA confirmation. For recovery after main advances, dispatch the workflow at the matching released version tag and supply its successful main CI run ID. Both publication channels independently verify CI, commit and release identity. See [the full publishing contract](docs/publishing.md).
 
-See GitHub's [Marketplace publishing guide](https://docs.github.com/en/actions/how-tos/create-and-publish-actions/publish-in-github-marketplace).
+The software remains free under MIT. A Marketplace listing does not certify the code or change runner charges. GitHub documents its [Marketplace publishing requirements](https://docs.github.com/en/actions/how-tos/create-and-publish-actions/publish-in-github-marketplace).
